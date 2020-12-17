@@ -1,1 +1,2 @@
-(^ab.ab b)c;
+(fun ab=> ab b)c;
+(fun ab=> fun b => ab b)c;

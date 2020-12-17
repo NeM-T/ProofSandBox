@@ -1,4 +1,4 @@
-open Arith
+open Debruijn
 open Print
 open Eval
 
@@ -13,8 +13,9 @@ let write t =
       print_string "    =>";
       let result = left_eval t' in
       print_string (string_option string_of_debruijn result);
-      print_string ( "  =>" ^ (string_option string_of_lambda (option_d_to_lambda result index)) ^ "\n")
-  | None -> print_string "None\n"
+      print_string ( "  =>" ^ (string_option string_of_lambda (option_d_to_lambda result index)));
+      print_newline()
+  | None -> print_string "None"; print_newline()
 
 
 

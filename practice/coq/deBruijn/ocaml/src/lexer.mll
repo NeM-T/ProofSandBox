@@ -8,8 +8,8 @@ rule main = parse
 | "("   { Parser.LPAREN }
 | ")"   { Parser.RPAREN }
 | ";"   { Parser.SEMI }
-| "^"   { Parser.ABS }
-| "."   { Parser.DOT }
+| "fun"   { Parser.ABS }
+| "=>"   { Parser.DOT }
 | ['a'-'z']+ {Parser.ID (Lexing.lexeme lexbuf)}
 | eof   { exit 0 }
 | _     { raise (Error (Printf.sprintf "At offset %d: unexpected character." (Lexing.lexeme_start lexbuf))) }

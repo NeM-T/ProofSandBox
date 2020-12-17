@@ -2,27 +2,30 @@
   open Eval
   open Print
 %}
-
-
-%token LPAREN RPAREN SEMI DOT
-%token ABS 
 %token <string> ID
+%token LPAREN RPAREN
+%token ABS DOT
+%token SEMI
 
 %start toplevel
-%type <Eval.namelambda> toplevel
+%type <namelambda> toplevel
 %%
 
-toplevel :
-  e=Expr SEMI {e}
+toplevel:
+  Expr SEMI { $1 }
 
-Expr :
-  t1=Expr t2=Expr  {App0 (t1, t2)}
-  | e=AExpr {e}
+Expr:
+| ABS AbsExpr { $2 }
+| AppExpr { $1 }
 
-AExpr :
-  ABS x=ID DOT e=Expr {Abs0 ((string_to_char_list x), e)}
-  | e=VExpr {e}
+AbsExpr:
+| x=ID l=AbsExpr { Abs0 (string_to_char_list x, l) }
+| x=ID DOT e=Expr { Abs0 (string_to_char_list x, e) }
 
-VExpr :
-  x = ID  {Var0 (string_to_char_list x)}
-  | LPAREN e=Expr RPAREN {e}
+AppExpr:
+| e1=AppExpr e2=AExpr { App0 (e1, e2) }
+| AExpr { $1 }
+
+AExpr:
+| x=ID { Var0 (string_to_char_list x) }
+| LPAREN e=Expr RPAREN { e }
