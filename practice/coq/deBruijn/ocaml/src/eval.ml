@@ -56,22 +56,22 @@ let rec eqb0 s1 s2 =
 
 type deBruijn =
 | Var of nat
-| Abs of char list * deBruijn
 | App of deBruijn * deBruijn
+| Abs of char list * deBruijn
 
 (** val shift : nat -> deBruijn -> deBruijn **)
 
 let rec shift k = function
 | Var x -> Var (if Nat.leb k x then S x else x)
-| Abs (x, t') -> Abs (x, (shift (S k) t'))
 | App (t1, t2) -> App ((shift k t1), (shift k t2))
+| Abs (x, t') -> Abs (x, (shift (S k) t'))
 
 (** val subst : nat -> deBruijn -> deBruijn -> deBruijn **)
 
 let rec subst d s = function
 | Var x -> if Nat.eqb d x then s else if Nat.ltb d x then Var (Nat.pred x) else Var x
-| Abs (x, t') -> Abs (x, (subst (S d) (shift O s) t'))
 | App (t1, t2) -> App ((subst d s t1), (subst d s t2))
+| Abs (x, t') -> Abs (x, (subst (S d) (shift O s) t'))
 
 type namelambda =
 | Var0 of char list
@@ -137,9 +137,6 @@ let rec debruijn_to_lambda l = function
 | Var n -> (match nth l n with
             | Some x -> Some (Var0 x)
             | None -> None)
-| Abs (x, t1) -> (match debruijn_to_lambda (x::l) t1 with
-                  | Some t' -> Some (Abs0 (x, t'))
-                  | None -> None)
 | App (t1, t2) ->
   let o = debruijn_to_lambda l t1 in
   let o0 = debruijn_to_lambda l t2 in
@@ -148,14 +145,14 @@ let rec debruijn_to_lambda l = function
                   | Some t2' -> Some (App0 (t1', t2'))
                   | None -> None)
    | None -> None)
+| Abs (x, t1) -> (match debruijn_to_lambda (x::l) t1 with
+                  | Some t' -> Some (Abs0 (x, t'))
+                  | None -> None)
 
 (** val left_eval : deBruijn -> deBruijn option **)
 
 let rec left_eval = function
 | Var _ -> None
-| Abs (x, t1) -> (match left_eval t1 with
-                  | Some t1' -> Some (Abs (x, t1'))
-                  | None -> None)
 | App (t1, t2) ->
   (match t1 with
    | Abs (_, t1') -> Some (subst O t2 t1')
@@ -165,6 +162,9 @@ let rec left_eval = function
       | None -> (match left_eval t2 with
                  | Some t2' -> Some (App (t1, t2'))
                  | None -> None)))
+| Abs (x, t1) -> (match left_eval t1 with
+                  | Some t1' -> Some (Abs (x, t1'))
+                  | None -> None)
 
 (** val result_lambda : deBruijn -> char list list -> namelambda option **)
 

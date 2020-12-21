@@ -24,8 +24,8 @@ val eqb0 : char list -> char list -> bool
 
 type deBruijn =
 | Var of nat
-| Abs of char list * deBruijn
 | App of deBruijn * deBruijn
+| Abs of char list * deBruijn
 
 val shift : nat -> deBruijn -> deBruijn
 

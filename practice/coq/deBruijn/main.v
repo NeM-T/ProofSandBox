@@ -12,8 +12,8 @@ Import Nat.
 
 Inductive deBruijn : Type :=
 | var : nat -> deBruijn
-| abs : string -> deBruijn -> deBruijn
-| app : deBruijn -> deBruijn -> deBruijn.
+| app : deBruijn -> deBruijn -> deBruijn
+| abs : string -> deBruijn -> deBruijn.
 
 Fixpoint shift k t :=
 match t with
@@ -124,11 +124,6 @@ Fixpoint debruijn_to_lambda l t:=
 
 Fixpoint left_eval t :=
   match t with
-  | abs x t1 =>
-    match left_eval t1 with
-    | Some t1' => Some (abs x t1')
-    | None => None
-    end
   | app t1 t2 =>
     match t1 with
     | abs x t1' => Some (subst 0 t2 t1')
@@ -142,6 +137,11 @@ Fixpoint left_eval t :=
         end
       end
     end
+  | abs x t1 =>
+    match left_eval t1 with
+    | Some t1' => Some (abs x t1')
+    | None => None
+    end
   | _ => None
   end.
 
@@ -152,6 +152,22 @@ Definition result_lambda t l :=
   end.
 
 Extraction "ocaml/src/eval.ml" lambda_to_debruijn left_eval debruijn_to_lambda result_lambda.
+
+Reserved Notation " t '-->' t' " (at level 40).
+Inductive eval : deBruijn -> deBruijn -> Prop :=
+| E_Abs : forall x t1 t1',
+    t1 --> t1' ->
+    abs x t1 --> abs x t1'
+| E_App1 : forall t1 t1' t2,
+    t1 --> t1' ->
+    app t1 t2 --> app t1' t2
+| E_App2 : forall t1 t2 t2',
+    t2 --> t2' ->
+    app t1 t2 --> app t1 t2'
+| E_AppAbs : forall t1 t2 x,
+    app (abs x t1) t2 --> subst 0 t2 t1
+
+  where " t '-->' t' " := (eval t t').
 
 Lemma remove_subst : forall t1 t2 x Γ n t1' t2',
     removenames Γ t2 = Some t2' ->
@@ -242,7 +258,6 @@ Fixpoint eq_lambda t1 t2 l:=
   end.
 *)
 
-Reserved Notation " t '-->n' t' " (at level 40).
 
 Inductive value_name : namelambda -> Prop :=
   | v_abs : forall t x, value_name (Abs x t).
