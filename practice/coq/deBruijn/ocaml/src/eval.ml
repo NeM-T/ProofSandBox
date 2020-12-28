@@ -9,6 +9,13 @@ type 'a option =
 
 
 
+(** val add : nat -> nat -> nat **)
+
+let rec add n m =
+  match n with
+  | O -> m
+  | S p -> S (add p m)
+
 module Nat =
  struct
   (** val pred : nat -> nat **)
@@ -59,19 +66,19 @@ type deBruijn =
 | App of deBruijn * deBruijn
 | Abs of char list * deBruijn
 
-(** val shift : nat -> deBruijn -> deBruijn **)
+(** val shift : nat -> nat -> deBruijn -> deBruijn **)
 
-let rec shift k = function
-| Var x -> Var (if Nat.leb k x then S x else x)
-| App (t1, t2) -> App ((shift k t1), (shift k t2))
-| Abs (x, t') -> Abs (x, (shift (S k) t'))
+let rec shift k n = function
+| Var x -> Var (if Nat.leb k x then add x n else x)
+| App (t1, t2) -> App ((shift k n t1), (shift k n t2))
+| Abs (x, t') -> Abs (x, (shift (S k) n t'))
 
 (** val subst : nat -> deBruijn -> deBruijn -> deBruijn **)
 
 let rec subst d s = function
-| Var x -> if Nat.eqb d x then s else if Nat.ltb d x then Var (Nat.pred x) else Var x
+| Var x -> if Nat.eqb d x then shift O x s else if Nat.ltb d x then Var (Nat.pred x) else Var x
 | App (t1, t2) -> App ((subst d s t1), (subst d s t2))
-| Abs (x, t') -> Abs (x, (subst (S d) (shift O s) t'))
+| Abs (x, t') -> Abs (x, (subst (S d) s t'))
 
 type namelambda =
 | Var0 of char list

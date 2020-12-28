@@ -9,6 +9,8 @@ type 'a option =
 
 
 
+val add : nat -> nat -> nat
+
 module Nat :
  sig
   val pred : nat -> nat
@@ -27,7 +29,7 @@ type deBruijn =
 | App of deBruijn * deBruijn
 | Abs of char list * deBruijn
 
-val shift : nat -> deBruijn -> deBruijn
+val shift : nat -> nat -> deBruijn -> deBruijn
 
 val subst : nat -> deBruijn -> deBruijn -> deBruijn
 

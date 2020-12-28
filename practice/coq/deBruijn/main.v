@@ -15,19 +15,19 @@ Inductive deBruijn : Type :=
 | app : deBruijn -> deBruijn -> deBruijn
 | abs : string -> deBruijn -> deBruijn.
 
-Fixpoint shift k t :=
+Fixpoint shift k n t :=
 match t with
-| var x => var (if leb k x then (S x) else x)
-| abs x t' => abs x (shift (S k) t')
-| app t1 t2 => app (shift k t1) (shift k t2)
+| var x => var (if leb k x then (x + n) else x)
+| abs x t' => abs x (shift (S k) n t')
+| app t1 t2 => app (shift k n t1) (shift k n t2)
 end.
 
 Fixpoint subst (d : nat) s t :=
 match t with
 | var x =>
-  if eqb d x then s
+  if eqb d x then (shift 0 x s)
   else if ltb d x then var (pred x) else var x
-| abs x t' => abs x (subst (S d) (shift 0 s) t')
+| abs x t' => abs x (subst (S d) s t')
 | app t1 t2 => app (subst d s t1) (subst d s t2)
 end.
 
@@ -168,6 +168,149 @@ Inductive eval : deBruijn -> deBruijn -> Prop :=
     app (abs x t1) t2 --> subst 0 t2 t1
 
   where " t '-->' t' " := (eval t t').
+
+Reserved Notation " t '-->>' t' " (at level 40).
+Inductive many_eval : deBruijn -> deBruijn -> Prop :=
+| eval_refl : forall t, t -->> t
+| eval_trans : forall t1 t2 t3,
+    t1 --> t2 -> t2 -->> t3 -> t1 -->> t3
+  where " t '-->>' t' " := (many_eval t t').
+
+
+Reserved Notation " t '==>' t' " (at level 40).
+Inductive par_eval : deBruijn -> deBruijn -> Prop :=
+| PE_Var : forall n, var n ==> var n
+| PE_Abs : forall x t1 t1',
+    t1 ==> t1' ->
+    abs x t1 ==> abs x t1'
+| PE_App : forall t1 t1' t2 t2',
+    t1 ==> t1' ->
+    t2 ==> t2' ->
+    app t1 t2 ==> app t1' t2'
+| PE_AppAbs : forall t1 t2 t1' t2' x,
+    t1 ==> t1' -> t2 ==> t2' ->
+    app (abs x t1) t2 ==> subst 0 t2' t1'
+
+  where " t '==>' t' " := (par_eval t t').
+
+Lemma app_bigstep : forall t1 t2 t1' t2',
+    t1 -->> t1' -> t2 -->> t2' ->
+    app t1 t2 -->> app t1' t2'.
+Proof.
+  intros.
+  generalize dependent t2. generalize dependent t2'.
+  induction H; intros. induction H0. constructor.
+  econstructor. solve [constructor; eauto].
+  auto.
+  apply IHmany_eval in H1. econstructor. constructor; eauto. auto.
+Qed.
+
+Lemma abs_bigstep : forall t1 t1' x,
+    t1 -->> t1' ->
+    abs x t1 -->> abs x t1'.
+Proof.
+  intros. induction H; try econstructor; eauto.
+  constructor; auto.
+Qed.
+
+Lemma bigstep_trans : forall t1 t2 t3,
+    t1 -->> t2 -> t2 -->> t3 ->
+    t1 -->> t3.
+Proof.
+  intros. generalize dependent t3. induction H; intros; auto.
+  apply IHmany_eval in H1. econstructor; eauto.
+Qed.
+
+Lemma par_bigstep : forall t1 t1',
+    t1 ==> t1' -> t1 -->> t1'.
+Proof.
+  induction t1; intros.
+  -
+    inversion H; subst. constructor.
+  -
+    inversion H; subst.
+    apply IHt1_1 in H2. apply IHt1_2 in H4. apply app_bigstep; auto.
+    apply bigstep_trans with (app (abs x t1'0) t2'). apply app_bigstep; auto.
+    apply IHt1_1. constructor; auto. econstructor. apply E_AppAbs. constructor.
+  -
+    inversion H; subst. apply IHt1 in H3. eapply abs_bigstep in H3. eapply bigstep_trans; eauto.
+    constructor.
+Qed.
+
+Lemma par_refl : forall t1,
+    t1 ==> t1.
+Proof.
+  induction t1; try constructor; auto.
+Qed.
+
+Lemma par_onestep : forall t t',
+    t --> t' -> t ==> t'.
+Proof.
+  intros. induction H; try (constructor; auto); try apply par_refl.
+Qed.
+
+
+Lemma par_shift : forall t1 t1' n s,
+    t1 ==> t1' -> shift n s t1 ==> shift n s t1'.
+Proof.
+  intros. generalize dependent n.
+  induction H; intros; simpl; try solve [constructor; auto].
+Abort.
+
+Lemma par_subst : forall t1 t2 t1' t2' n,
+    t1 ==> t1' -> t2 ==> t2' ->
+    subst n t2 t1 ==> subst n t2' t1'.
+Proof.
+  induction t1; intros; inversion H; subst; simpl.
+  -
+    destruct eqb; try constructor; auto; try apply par_refl.
+    +
+      clear H. clear n0. remember 0 as n0. clear Heqn0. generalize dependent n0.
+      induction H0; simpl; intros; try constructor; auto.
+      admit.
+  -
+    constructor. apply IHt1_1; auto. apply IHt1_2; auto.
+  -
+    eapply IHt1_2 in H0; eauto. admit.
+  -
+    constructor. apply IHt1; auto; apply par_shift; auto.
+Abort.
+
+Lemma par_abs : forall M1 x s,
+    (forall M', abs s M1 ==> M' -> M' ==> x) ->
+    exists t1, x = abs s t1.
+Proof.
+  intros. specialize (H (abs s M1)). generalize (par_refl (abs s M1)); intros. apply H in H0. inversion H0; subst.
+  exists t1'; reflexivity.
+Qed.
+
+Theorem ChurchRosser : forall M,
+    exists N, (forall M', M ==> M' -> M' ==> N).
+Proof.
+  induction M.
+  -
+    exists (var n); intros. inversion H; subst; constructor.
+  -
+    destruct M1; inversion IHM1; clear IHM1; inversion IHM2; clear IHM2.
+    +
+      exists (app (var n) x0); intros. inversion H1; subst. inversion H4; subst. constructor; auto.
+    +
+      exists (app x x0). intros. inversion H1; subst. constructor; auto.
+    +
+      generalize H; intros. apply par_abs with (M1:= M1) (s:= s) in H1; auto. inversion H1; subst. inversion H1; subst.
+      clear H2.
+      exists (subst 0 x0 x1). intros. inversion H2; subst.
+      *
+        inversion H5; subst. apply H in H5. inversion H5; subst. constructor; auto.
+      *
+        apply PE_Abs with (x:= s) in H7. apply H in H7. inversion H7; subst. apply H0 in H8.
+        admit.
+  -
+    inversion IHM; clear IHM.
+    exists (abs s x). intros. inversion H0; subst. constructor; auto.
+Abort.
+
+
 
 Lemma remove_subst : forall t1 t2 x Γ n t1' t2',
     removenames Γ t2 = Some t2' ->
