@@ -22,14 +22,16 @@ match t with
 | app t1 t2 => app (shift k n t1) (shift k n t2)
 end.
 
+Reserved Notation "'[[' x ':=' s ']]' t" (at level 20).
 Fixpoint subst (d : nat) s t :=
 match t with
 | var x =>
   if eqb d x then (shift 0 x s)
   else if ltb d x then var (pred x) else var x
-| abs x t' => abs x (subst (S d) s t')
-| app t1 t2 => app (subst d s t1) (subst d s t2)
-end.
+| abs x t' => abs x  ( [[ (S d) := s ]] t')
+| app t1 t2 => app ([[d:= s]] t1) ([[d := s]] t2)
+end
+where "'[[' x ':=' s ']]' t" := (subst x s t).
 
 Inductive namelambda : Type :=
 | Var (name: string)
@@ -165,7 +167,7 @@ Inductive eval : deBruijn -> deBruijn -> Prop :=
     t2 --> t2' ->
     app t1 t2 --> app t1 t2'
 | E_AppAbs : forall t1 t2 x,
-    app (abs x t1) t2 --> subst 0 t2 t1
+    app (abs x t1) t2 -->  [[0:= t2]] t1
 
   where " t '-->' t' " := (eval t t').
 
@@ -189,7 +191,7 @@ Inductive par_eval : deBruijn -> deBruijn -> Prop :=
     app t1 t2 ==> app t1' t2'
 | PE_AppAbs : forall t1 t2 t1' t2' x,
     t1 ==> t1' -> t2 ==> t2' ->
-    app (abs x t1) t2 ==> subst 0 t2' t1'
+    app (abs x t1) t2 ==>  [[0 := t2']] t1'
 
   where " t '==>' t' " := (par_eval t t').
 
@@ -249,7 +251,6 @@ Proof.
   intros. induction H; try (constructor; auto); try apply par_refl.
 Qed.
 
-
 Lemma par_shift : forall t1 t1' n s,
     t1 ==> t1' -> shift n s t1 ==> shift n s t1'.
 Proof.
@@ -263,11 +264,8 @@ Lemma par_subst : forall t1 t2 t1' t2' n,
 Proof.
   induction t1; intros; inversion H; subst; simpl.
   -
-    destruct eqb; try constructor; auto; try apply par_refl.
-    +
-      clear H. clear n0. remember 0 as n0. clear Heqn0. generalize dependent n0.
-      induction H0; simpl; intros; try constructor; auto.
-      admit.
+    destruct eqb; try apply par_refl.
+    admit.
   -
     constructor. apply IHt1_1; auto. apply IHt1_2; auto.
   -
@@ -275,14 +273,6 @@ Proof.
   -
     constructor. apply IHt1; auto; apply par_shift; auto.
 Abort.
-
-Lemma par_abs : forall M1 x s,
-    (forall M', abs s M1 ==> M' -> M' ==> x) ->
-    exists t1, x = abs s t1.
-Proof.
-  intros. specialize (H (abs s M1)). generalize (par_refl (abs s M1)); intros. apply H in H0. inversion H0; subst.
-  exists t1'; reflexivity.
-Qed.
 
 Theorem ChurchRosser : forall M,
     exists N, (forall M', M ==> M' -> M' ==> N).
@@ -297,13 +287,13 @@ Proof.
     +
       exists (app x x0). intros. inversion H1; subst. constructor; auto.
     +
-      generalize H; intros. apply par_abs with (M1:= M1) (s:= s) in H1; auto. inversion H1; subst. inversion H1; subst.
-      clear H2.
-      exists (subst 0 x0 x1). intros. inversion H2; subst.
+      generalize H; intros. specialize (H1 (abs s M1)). generalize (par_refl (abs s M1)); intros.
+      apply H1 in H2. inversion H2; subst.
+      exists (subst 0 x0 t1'). intros. inversion H3; subst.
       *
-        inversion H5; subst. apply H in H5. inversion H5; subst. constructor; auto.
+        inversion H7; subst. apply H in H7. inversion H7; subst. constructor; auto.
       *
-        apply PE_Abs with (x:= s) in H7. apply H in H7. inversion H7; subst. apply H0 in H8.
+        apply PE_Abs with (x:= s) in H9. apply H in H9. inversion H9; subst. apply H0 in H10.
         admit.
   -
     inversion IHM; clear IHM.
