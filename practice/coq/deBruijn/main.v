@@ -15,23 +15,23 @@ Inductive deBruijn : Type :=
 | app : deBruijn -> deBruijn -> deBruijn
 | abs : string -> deBruijn -> deBruijn.
 
-Fixpoint shift k n t :=
+Fixpoint shift k t :=
 match t with
-| var x => var (if leb k x then (x + n) else x)
-| abs x t' => abs x (shift (S k) n t')
-| app t1 t2 => app (shift k n t1) (shift k n t2)
+| var x => var (if leb k x then (S x) else x)
+| abs x t' => abs x (shift (S k) t')
+| app t1 t2 => app (shift k t1) (shift k t2)
 end.
 
-Reserved Notation "'[[' x ':=' s ']]' t" (at level 20).
+Reserved Notation "t '[[' x '\' s ']]'" (at level 20).
 Fixpoint subst (d : nat) s t :=
 match t with
 | var x =>
-  if eqb d x then (shift 0 x s)
+  if eqb d x then s
   else if ltb d x then var (pred x) else var x
-| abs x t' => abs x  ( [[ (S d) := s ]] t')
-| app t1 t2 => app ([[d:= s]] t1) ([[d := s]] t2)
+| abs x t' => abs x  (t' [[ (S d) \ (shift 0 s) ]])
+| app t1 t2 => app (t1[[d\ s]]) (t2[[d \ s]])
 end
-where "'[[' x ':=' s ']]' t" := (subst x s t).
+where "t '[[' x '\' s ']]'" := (subst x s t).
 
 Inductive namelambda : Type :=
 | Var (name: string)
@@ -167,7 +167,7 @@ Inductive eval : deBruijn -> deBruijn -> Prop :=
     t2 --> t2' ->
     app t1 t2 --> app t1 t2'
 | E_AppAbs : forall t1 t2 x,
-    app (abs x t1) t2 -->  [[0:= t2]] t1
+    app (abs x t1) t2 -->  t1 [[0 \ t2]]
 
   where " t '-->' t' " := (eval t t').
 
@@ -176,6 +176,7 @@ Inductive many_eval : deBruijn -> deBruijn -> Prop :=
 | eval_refl : forall t, t -->> t
 | eval_trans : forall t1 t2 t3,
     t1 --> t2 -> t2 -->> t3 -> t1 -->> t3
+
   where " t '-->>' t' " := (many_eval t t').
 
 
@@ -191,7 +192,7 @@ Inductive par_eval : deBruijn -> deBruijn -> Prop :=
     app t1 t2 ==> app t1' t2'
 | PE_AppAbs : forall t1 t2 t1' t2' x,
     t1 ==> t1' -> t2 ==> t2' ->
-    app (abs x t1) t2 ==>  [[0 := t2']] t1'
+    app (abs x t1) t2 ==>  t1' [[0 \ t2']]
 
   where " t '==>' t' " := (par_eval t t').
 
@@ -250,6 +251,238 @@ Lemma par_onestep : forall t t',
 Proof.
   intros. induction H; try (constructor; auto); try apply par_refl.
 Qed.
+
+Lemma leb_S : forall n1 n2,
+    n1 <=? n2 = true -> n1 <=? (S n2) = true.
+Proof.
+  intros.
+  apply leb_le. apply leb_le in H.
+  induction H; constructor; auto.
+Qed.
+
+Lemma shift_shift : forall t1 i k,
+    i < (S k) ->
+    shift (S k) (shift i t1 ) = shift i (shift k t1).
+Proof.
+  induction t1; simpl; intros.
+  -
+    destruct leb eqn:IH1; destruct (leb k n) eqn:IH2.
+    apply leb_S in IH1. rewrite IH1. reflexivity. rewrite IH1. reflexivity.
+    apply Lt.lt_n_Sm_le in H. apply leb_le in IH2. apply le_trans with (p := n) in H; auto.
+    apply leb_le in H. rewrite H in IH1. inversion IH1.
+    rewrite IH1. destruct n. reflexivity.
+    destruct (k <=? n) eqn:IH3; auto.
+    apply leb_le in IH3. apply le_n_S in IH3. apply lt_le_incl in H. apply le_trans with (p:= (S n)) in H; auto.
+    apply leb_le in H. rewrite H in IH1. inversion IH1.
+  -
+    rewrite IHt1_1; auto. rewrite IHt1_2; auto.
+  -
+    rewrite IHt1; auto. apply Lt.lt_n_S in H. apply H.
+Qed.
+
+Lemma shift_sub : forall t1 i j s,
+    j < (S i) ->
+    shift i (t1 [[ j \ s]] ) = (shift (i + 1 ) t1) [[j \ (shift i s) ]].
+Proof.
+  induction t1; simpl; intros.
+  -
+    rewrite add_1_r.
+    destruct eqb eqn:IH1.
+    +
+      apply eqb_eq in IH1; subst.
+      destruct leb eqn:IH2.
+      *
+        apply leb_le in IH2. apply Lt.lt_not_le in H. induction H; auto.
+      *
+        rewrite eqb_refl. reflexivity.
+    +
+      destruct ltb eqn:IH2.
+      *
+        destruct leb eqn:IH3.
+        **
+          destruct (j =? S n) eqn:IH4.
+          ***
+            apply eqb_eq in IH4; subst. apply leb_le in IH3. apply nlt_ge in IH3. compute in IH3. apply lt_le_incl in H. induction IH3; auto.
+          ***
+            simpl.
+            destruct n. inversion IH2. simpl.
+            apply ltb_lt in IH3. compute in IH3. apply le_S_n in IH3. apply leb_le in IH3. rewrite IH3.
+            apply ltb_lt in IH2. apply lt_lt_succ_r in IH2. apply ltb_lt in IH2. rewrite IH2. reflexivity.
+        **
+          rewrite IH1. rewrite IH2. simpl. destruct n. inversion IH2.
+          simpl. apply leb_nle in IH3. apply nle_gt in IH3. apply Lt.lt_S_n in IH3. apply nle_gt in IH3.
+          apply leb_nle in IH3. rewrite IH3. reflexivity.
+      *
+        destruct leb eqn:IH3.
+        **
+          destruct (j =? S n) eqn:IH4.
+          ***
+            apply eqb_eq in IH4; subst. compute in H. apply le_S_n in H. apply nlt_ge in H. apply leb_le in IH3.
+            apply Lt.le_lt_n_Sm in IH3. apply lt_succ_l in IH3. induction H; apply IH3.
+          ***
+            simpl.
+            apply leb_le in IH3. apply Le.le_Sn_le in IH3. apply leb_le in IH3. rewrite IH3.
+            assert (j <? S n = false).
+            apply ltb_nlt in IH2. apply nle_gt in IH2. apply (lt_succ_r n j) in IH2.
+            apply ltb_nlt. apply Lt.le_not_lt. apply le_succ_l.
+            apply Lt.le_lt_or_eq in IH2. destruct IH2; auto. subst. rewrite eqb_refl in IH1. inversion IH1.
+            rewrite H0. reflexivity.
+        **
+          rewrite IH1. rewrite IH2. simpl.
+          apply leb_nle in IH2. apply nle_gt in IH2.
+          apply leb_nle in IH3. apply nle_gt in IH3. apply Lt.lt_n_Sm_le in IH3.
+          apply Lt.le_lt_or_eq in IH3. destruct IH3. apply nle_gt in H0. apply leb_nle in H0. rewrite H0.
+          reflexivity.
+          subst.
+          compute in H. compute in IH2. apply le_antisymm in H; auto. inversion H; subst. rewrite eqb_refl in IH1.
+          inversion IH1.
+  -
+    rewrite IHt1_1; try rewrite IHt1_2; auto.
+  -
+    rewrite IHt1. rewrite shift_shift; auto.
+    apply lt_0_succ.
+    apply Lt.lt_n_S; auto.
+Qed.
+
+Lemma shift_sub_lt : forall t1 s i j,
+    i < (S j) ->
+    shift i (t1 [[j \ s]]) = (shift i t1) [[(S j) \ shift i s]].
+Proof.
+  induction t1; simpl; intros.
+  -
+    destruct eqb eqn:IH1.
+    +
+      apply eqb_eq in IH1; subst.
+      destruct leb eqn:IH2.
+      *
+        simpl. rewrite eqb_refl. reflexivity.
+      *
+        apply leb_nle in IH2. compute in H. apply le_S_n in H. induction IH2; auto.
+    +
+      destruct (j <? n) eqn:IH2.
+      *
+        destruct (i <=? n) eqn:IH3.
+        **
+          rewrite IH1. apply ltb_lt in IH2. apply Lt.lt_n_S in IH2. apply ltb_lt in IH2.
+          rewrite IH2. simpl. destruct n; try discriminate; simpl.
+          apply leb_le in IH3. apply Lt.le_lt_or_eq in IH3. destruct IH3; subst.
+          compute in H0. apply le_S_n in H0. apply leb_le in H0; rewrite H0. reflexivity.
+          apply ltb_lt in IH2. apply Lt.lt_S_n in IH2. apply Lt.lt_S_n in H.
+          apply nle_gt in IH2. compute in H. induction IH2. apply H.
+        **
+          destruct n; try discriminate; simpl.
+          apply leb_nle in IH3. apply nle_gt in IH3. apply lt_succ_l in IH3. apply nle_gt in IH3. apply leb_nle in IH3. rewrite IH3.
+          destruct (j =? n) eqn:IH4. apply eqb_eq in IH4; subst. compute in H. apply leb_nle in IH3. apply le_S_n in H. induction IH3; apply H.
+          destruct (S j <? S n) eqn:IH5; auto.
+          apply ltb_lt in IH2. compute in IH2. apply Lt.le_lt_or_eq in IH2. destruct IH2; subst; try discriminate.
+          apply ltb_lt in H0. rewrite H0 in IH5. inversion IH5. inversion H0; subst. rewrite eqb_refl in IH4. inversion IH4.
+      *
+        destruct leb eqn:IH3.
+        **
+          rewrite IH1. simpl. rewrite IH3. destruct (S j <? S n) eqn:IH4; auto.
+          apply ltb_lt in IH4. apply Lt.lt_S_n in IH4. apply ltb_lt in IH4. rewrite IH4 in IH2. inversion IH2.
+        **
+          destruct n; simpl. rewrite IH3. reflexivity.
+          rewrite IH3. destruct (j =? n) eqn:IH4.
+          apply eqb_eq in IH4; subst. apply ltb_nlt in IH2. apply nlt_ge in IH2. einduction nle_succ_diag_l. apply IH2.
+          destruct (S j <? S n) eqn:IH5; auto.
+          apply ltb_lt in IH5. compute in IH5. repeat apply Le.le_Sn_le in IH5.
+          apply Lt.le_lt_or_eq in IH5; destruct IH5; subst. apply ltb_lt in H0. rewrite H0 in IH2. inversion IH2.
+          rewrite eqb_refl in IH1. inversion IH1.
+  -
+    rewrite IHt1_1; try rewrite IHt1_2; auto.
+  -
+    rewrite IHt1; auto. rewrite shift_shift; auto.
+    apply lt_0_succ.
+    apply Lt.lt_n_S; auto.
+Qed.
+
+Lemma sub_shift : forall t1 k s,
+  (shift k t1)[[k \ s]] = t1.
+Proof.
+  induction t1; simpl; intros.
+  -
+    destruct (k <=? n) eqn:IH1.
+    +
+      destruct eqb eqn:IH2.
+      *
+        apply eqb_eq in IH2; subst. apply leb_le in IH1. einduction nle_succ_diag_l; eauto.
+      *
+        simpl.
+        assert (k <? S n = true).
+        apply leb_le in IH1. apply le_n_S in IH1. unfold ltb. apply leb_le. apply IH1.
+        rewrite H; reflexivity.
+    +
+      destruct eqb eqn:IH2.
+      *
+        apply eqb_eq in IH2; subst. rewrite leb_refl in IH1. inversion IH1.
+      *
+        destruct ltb eqn:IH3.
+        **
+          apply ltb_lt in IH3. apply lt_le_incl in IH3. apply leb_le in IH3. rewrite IH3 in IH1. inversion IH1.
+        **
+          reflexivity.
+  -
+    rewrite IHt1_1, IHt1_2; reflexivity.
+  -
+    rewrite IHt1. reflexivity.
+Qed.
+
+Lemma subsub :forall t1 j i v u,
+    i < (S j) ->
+    t1[[ S j \ shift i v ]] [[i \ u[[j\ v ]] ]] = t1 [[i \ u ]] [[j \ v]].
+Proof.
+  induction t1; simpl; intros.
+  -
+    destruct n.
+    +
+      destruct ltb eqn:IH1. inversion IH1.
+      simpl. destruct i. reflexivity.
+      simpl. apply Lt.lt_S_n in H. destruct j. inversion H. simpl. reflexivity.
+    +
+      simpl.
+      destruct eqb eqn:IH1.
+      ++
+        apply eqb_eq in IH1; subst. generalize H; intros. compute in H. destruct eqb eqn:IH1; try apply eqb_eq in IH1; subst.
+        einduction nle_succ_diag_l; eauto. apply ltb_lt in H0. rewrite H0. simpl. rewrite eqb_refl.
+        rewrite sub_shift. reflexivity.
+      ++
+        destruct ltb eqn:IH2; simpl.
+        destruct (eqb i n) eqn:IH3. apply eqb_eq in IH3; subst.
+        apply ltb_lt in IH2.
+        apply nle_gt in IH2. compute in H. induction IH2. apply H.
+      --
+        destruct (ltb i n) eqn:IH4.
+        destruct (i =? S n) eqn:IH5; try apply eqb_eq in IH5; subst. apply ltb_lt in IH4.
+        induction (nlt_succ_diag_l n); apply IH4.
+        apply ltb_lt in IH2. apply lt_trans with (p:= S n) in H; auto. apply ltb_lt in H. rewrite H.
+        simpl. rewrite IH1. apply Lt.lt_S_n in IH2. apply ltb_lt in IH2. rewrite IH2. reflexivity.
+        destruct (i =? S n) eqn:IH5; try apply eqb_eq in IH5; subst.
+        apply ltb_lt in IH2. apply nle_gt in IH2. apply lt_le_incl in H. induction IH2. apply H.
+        apply ltb_lt in IH2. apply lt_trans with (p:= S n) in H; auto. compute in H.
+        apply le_S_n in H. apply Lt.le_lt_or_eq in H. destruct H.
+        apply ltb_lt in H. rewrite H in IH4. inversion IH4.
+        subst. rewrite eqb_refl in IH3. inversion IH3.
+      --
+        destruct (i =? S n) eqn:IH3; try apply eqb_eq in IH3; subst; auto.
+        apply ltb_nlt in IH2. apply nlt_ge in IH2.
+        destruct (i <? S n) eqn:IH4. simpl.
+        rewrite IH1. apply le_S_n in IH2. apply nlt_ge in IH2. apply ltb_nlt in IH2. rewrite IH2. reflexivity.
+        simpl.
+        destruct (eqb j (S n)) eqn:IH5; try apply eqb_eq in IH5; subst.
+        ***
+          compute in H. apply le_S_n in H. apply Lt.le_lt_or_eq in H. destruct H; subst.
+          apply ltb_nlt in IH4. induction IH4; apply H.
+          rewrite eqb_refl in IH3. inversion IH3.
+        ***
+          destruct (ltb j (S n)) eqn:IH6; auto.
+          apply ltb_lt in IH6. compute in IH6.
+          apply lt_le_trans with (p:= S n) in H; auto. apply ltb_lt in H. rewrite H in IH4.
+          inversion IH4.
+  -
+    rewrite IHt1_2, IHt1_1; auto.
+  -
+Abort.
 
 Lemma par_shift : forall t1 t1' n s,
     t1 ==> t1' -> shift n s t1 ==> shift n s t1'.
