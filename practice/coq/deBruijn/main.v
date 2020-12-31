@@ -428,6 +428,21 @@ Proof.
     rewrite IHt1. reflexivity.
 Qed.
 
+Lemma shift_preserve_beta : forall t1 t1' n,
+    t1 --> t1' -> shift n t1 --> shift n t1'.
+Proof.
+  induction t1; simpl; intros; inversion H; subst.
+  -
+    constructor. apply IHt1_1. apply H3.
+  -
+    constructor. apply IHt1_2; apply H3.
+  -
+    rewrite shift_sub. rewrite add_1_r. constructor.
+    apply lt_0_succ.
+  -
+    constructor. apply IHt1. apply H3.
+Qed.
+
 Lemma subsub :forall t1 j i v u,
     i < (S j) ->
     t1[[ S j \ shift i v ]] [[i \ u[[j\ v ]] ]] = t1 [[i \ u ]] [[j \ v]].
@@ -482,30 +497,67 @@ Proof.
   -
     rewrite IHt1_2, IHt1_1; auto.
   -
-Abort.
+    generalize lt_0_succ; intros.
+    generalize H; intros.
+    apply Lt.lt_n_S in H. apply IHt1 with (v:= v) (u:= u) in H.
+    rewrite shift_sub_lt; auto. rewrite <- shift_shift; auto. rewrite IHt1. reflexivity. apply Lt.lt_n_S.
+    apply H1.
+Qed.
 
-Lemma par_shift : forall t1 t1' n s,
-    t1 ==> t1' -> shift n s t1 ==> shift n s t1'.
+Lemma sub_preserve_beta : forall t1 t1' i s,
+    t1 --> t1' ->
+    t1[[i \ s]] --> t1' [[i \ s]].
 Proof.
-  intros. generalize dependent n.
-  induction H; intros; simpl; try solve [constructor; auto].
-Abort.
+  induction t1; simpl; intros.
+  inversion H.
+  -
+    inversion H; subst.
+    *
+      apply E_App1. apply IHt1_1. apply H3.
+    *
+      apply E_App2. apply IHt1_2; apply H3.
+    *
+      simpl. rewrite <- subsub. constructor.
+      apply lt_0_succ.
+  -
+    inversion H; subst.
+    constructor. apply IHt1. apply H3.
+Qed.
+
+Lemma par_shift : forall t1 t1' n,
+    t1 ==> t1' -> shift n t1 ==> shift n t1'.
+Proof.
+  induction t1; intros; simpl; inversion H; subst; simpl.
+  -
+    apply par_refl.
+  -
+    constructor; auto.
+  -
+    rewrite shift_sub. constructor; auto. rewrite add_1_r.
+    apply PE_Abs with (x:= x) in H2. apply IHt1_1 with (n:= n) in H2. simpl in H2. inversion H2; subst. apply H1.
+    apply lt_0_succ.
+  -
+    constructor; auto.
+Qed.
 
 Lemma par_subst : forall t1 t2 t1' t2' n,
     t1 ==> t1' -> t2 ==> t2' ->
-    subst n t2 t1 ==> subst n t2' t1'.
+    t1[[n \ t2]] ==> t1' [[n \ t2']].
 Proof.
-  induction t1; intros; inversion H; subst; simpl.
+  induction t1; simpl; intros; inversion H; subst; simpl.
   -
-    destruct eqb; try apply par_refl.
-    admit.
+    destruct eqb. apply H0. apply par_refl.
   -
-    constructor. apply IHt1_1; auto. apply IHt1_2; auto.
+    constructor; auto.
   -
-    eapply IHt1_2 in H0; eauto. admit.
+    rewrite <- subsub. constructor; auto.
+    generalize H3; intros.
+    apply PE_Abs with (x:= x) in H3.
+    specialize (IHt1_1 t2 (abs x t1'0) t2' n). apply IHt1_1 in H3. simpl in H3. inversion H3; subst.
+    apply H4. apply H0. apply lt_0_succ.
   -
-    constructor. apply IHt1; auto; apply par_shift; auto.
-Abort.
+    constructor; auto. apply par_shift with (n:= 0) in H0. apply IHt1; auto.
+Qed.
 
 Theorem ChurchRosser : forall M,
     exists N, (forall M', M ==> M' -> M' ==> N).
@@ -527,13 +579,14 @@ Proof.
         inversion H7; subst. apply H in H7. inversion H7; subst. constructor; auto.
       *
         apply PE_Abs with (x:= s) in H9. apply H in H9. inversion H9; subst. apply H0 in H10.
-        admit.
+        apply par_subst; auto.
   -
     inversion IHM; clear IHM.
     exists (abs s x). intros. inversion H0; subst. constructor; auto.
-Abort.
+Qed.
 
-
+Definition eq_beta M N := (M -->> N) \/ (N -->> M).
+Notation "M '=β' N" := (eq_beta M N) (at level 60).
 
 Lemma remove_subst : forall t1 t2 x Γ n t1' t2',
     removenames Γ t2 = Some t2' ->
