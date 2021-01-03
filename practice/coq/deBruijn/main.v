@@ -585,8 +585,180 @@ Proof.
     exists (abs s x). intros. inversion H0; subst. constructor; auto.
 Qed.
 
+Inductive multi_par : deBruijn -> deBruijn -> Prop :=
+| para_refl : forall d, multi_par d d
+| para_trans : forall d1 d2 d3, d1 ==> d2 -> multi_par d2 d3 -> multi_par d1 d3.
+Notation "d1 '==>>' d2" := (multi_par d1 d2) (at level 60).
+
+Lemma many_par : forall t1 t2,
+    t1 -->> t2 <-> t1 ==>> t2.
+Proof.
+  split; intros.
+
+  induction H. constructor.
+  econstructor; eauto. apply par_onestep. apply H.
+
+  induction H.
+  constructor. apply par_bigstep in H. eapply bigstep_trans; eauto.
+Qed.
+
+Lemma multi_par_trans : forall t1 t2 t3,
+    t1 ==>> t2 -> t2 ==>> t3 ->
+    t1 ==>> t3.
+Proof.
+  intros. generalize dependent t3.
+  induction H; intros; auto.
+  apply IHmulti_par in H1. econstructor; eauto.
+Qed.
+
+Lemma ChurchRosser2 : forall M M1 M2,
+    M ==> M1 -> M ==> M2 ->
+    exists N, M1 ==> N /\ M2 ==> N.
+Proof.
+  intros. generalize ChurchRosser.
+  intros. specialize (H1 M). destruct H1. exists x.
+  split; auto.
+Qed.
+
+Lemma par_multitrans : forall t1 t2 t3,
+    t1 ==> t2 -> t2 ==> t3 ->
+    t1 ==>> t3.
+Proof.
+  intros. apply para_trans with t2; auto. econstructor; eauto. constructor.
+Qed.
+
+Lemma chur : forall M,
+    exists N, (forall M1, M --> M1 -> M1 -->> N).
+Proof.
+  generalize ChurchRosser; intros. specialize (H M); destruct H.
+  exists x; intros. apply par_onestep in H0. apply H in H0.
+  apply par_bigstep. apply H0.
+Qed.
+
+Lemma chh : forall t1 t2 t3,
+    t1 ==> t2 -> t1 ==>> t3 ->
+    exists N, t2 ==>> N /\ t3 ==>> N.
+Proof.
+  intros. generalize dependent t2. induction H0; intros.
+  exists t2; split; try solve [econstructor; eauto; constructor].
+  generalize ChurchRosser; intros. specialize (H2 d1). destruct H2.
+  apply H2 in H. apply H2 in H1. apply IHmulti_par in H. destruct H. destruct H.
+  exists x0; split; auto. econstructor; eauto.
+Qed.
+
+Lemma chhh : forall t1 t2 t3,
+    t1 --> t2 -> t1 -->> t3 ->
+    exists N, t2 -->> N /\ t3 -->> N.
+Proof.
+  intros. apply par_onestep in H. apply many_par in H0.
+  eapply chh in H; eauto. destruct H. destruct H.
+  apply many_par in H. apply many_par in H1.
+  exists x; split; auto.
+Qed.
+
+Lemma ChurchRosser_many : forall M M1 M2,
+    M -->> M1 -> M -->> M2 ->
+    exists N, M1 -->> N /\ M2 -->> N.
+Proof.
+  intros.
+  generalize dependent M2. induction H; intros.
+  exists M2. split; auto; constructor.
+  apply chhh with (t3:= M2) in H; auto.
+  destruct H; destruct H.
+  apply IHmany_eval in H. destruct H; destruct H.
+  exists x0. split; auto. apply bigstep_trans with (t2:= x); auto.
+Qed.
+
 Definition eq_beta M N := (M -->> N) \/ (N -->> M).
 Notation "M '=β' N" := (eq_beta M N) (at level 60).
+
+
+Lemma K225 : forall M1 M2,
+    M1 =β M2 -> exists N, M1 -->> N /\ M2 -->> N.
+Proof.
+  intros. compute in H. destruct H.
+  -
+    induction H. exists t0; split; constructor.
+    inversion IHmany_eval. destruct H1.
+    exists x. split; auto; try solve [econstructor; eauto].
+  -
+    induction H. exists t0; split; constructor.
+    inversion IHmany_eval. destruct H1.
+    exists x. split; auto; econstructor; eauto.
+Qed.
+
+Inductive in_beta : deBruijn -> Prop :=
+| App_Abs_in : forall t1 t2 x, in_beta (app (abs x t1) t2)
+| App_in1 : forall t1 t2, in_beta t1 -> in_beta (app t1 t2)
+| App_in2 : forall t1 t2, in_beta t2 -> in_beta (app t1 t2)
+| Abs_in : forall t1 x, in_beta t1 -> in_beta (abs x t1).
+
+Definition βNF t := not (in_beta t).
+
+Fixpoint beta_nfb t :=
+  match t with
+  | var _ => true
+  | abs _ t1 => beta_nfb t1
+  | app t1 t2 =>
+    match t1 with
+    | abs _ _ => false
+    | _ => andb (beta_nfb t1) (beta_nfb t2)
+    end
+  end.
+
+Lemma beta_nfb_βNF : forall t1,
+    βNF t1 <-> beta_nfb t1 = true.
+Proof.
+  unfold βNF, not ; split.
+  -
+    induction t1; intros; simpl; auto.
+    +
+      destruct t1_1; simpl in IHt1_1; simpl in IHt1_2; auto. apply IHt1_2. intros.
+      apply H. apply App_in2. apply H0.
+      apply andb_true_intro. split.
+      apply IHt1_1. intros. apply H. constructor; auto.
+      apply IHt1_2. intros. apply H. solve [constructor; auto].
+      induction H. constructor; constructor.
+    +
+      apply IHt1. intros. apply H. constructor; auto.
+  -
+    induction t1; intros.
+    +
+      inversion H0.
+    +
+      simpl in H.
+      inversion H0; subst.
+      discriminate H.
+      destruct t1_1; try discriminate. inversion H2.
+      apply andb_prop in H. destruct H. apply IHt1_1; auto.
+      apply IHt1_2; auto. destruct t1_1; try discriminate; apply andb_prop in H; destruct H; auto.
+    +
+      inversion H0; subst; auto.
+Qed.
+
+Lemma beta_nfb_inβ : forall t1,
+    in_beta t1 <-> beta_nfb t1 = false.
+Proof.
+  split.
+  -
+    induction t1; simpl; intros; auto; inversion H; subst; auto.
+    +
+      apply IHt1_1 in H1. rewrite H1. simpl.
+      destruct t1_1; reflexivity.
+    +
+      apply IHt1_2 in H1. rewrite H1; simpl. rewrite Bool.andb_false_r. destruct t1_1; reflexivity.
+  -
+    induction t1; simpl; intros; try discriminate.
+    +
+      destruct t1_1.
+      simpl in H. apply IHt1_2 in H. solve [constructor; auto].
+      apply Bool.andb_false_iff in H. destruct H.
+      apply IHt1_1 in H. constructor; auto. apply IHt1_2 in H; solve [constructor; auto].
+      constructor; constructor.
+    +
+      constructor; auto.
+Qed.
+
 
 Lemma remove_subst : forall t1 t2 x Γ n t1' t2',
     removenames Γ t2 = Some t2' ->
