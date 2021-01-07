@@ -124,6 +124,48 @@ Fixpoint debruijn_to_lambda l t:=
     end
   end.
 
+Lemma in_list_plus : forall l n1 n2 s,
+    n2 <= n1 ->
+    in_list s l n1 =
+    (fun x => match x with | None => None | Some x' => Some  (x' + (n1 - n2)) end) (in_list s l n2).
+Proof.
+  induction l; simpl; intros; auto.
+  destruct String.eqb. rewrite add_sub_assoc; auto. rewrite Minus.minus_plus. reflexivity.
+  rewrite IHl with (n2:= S n2). reflexivity. apply le_n_S. apply H.
+Qed.
+
+Lemma in_nth : forall l n s,
+    in_list s l 0 = Some n ->
+    nth l n = Some s.
+Proof.
+  induction l; simpl; intros.
+  inversion H.
+  destruct String.eqb eqn:IH1. inversion H; subst. apply String.eqb_eq in IH1; subst. reflexivity.
+  rewrite in_list_plus with (n2:= 0) in H; auto. simpl in H. destruct (in_list s l 0) eqn:IH2. rewrite add_1_r in H.
+  inversion H; subst. apply IHl in IH2. apply IH2. inversion H.
+Qed.
+
+
+Lemma n_to_n : forall t1 t1' l,
+    removenames l t1 = Some t1' ->
+    debruijn_to_lambda l t1' = Some t1.
+Proof.
+  induction t1; simpl; intros; auto.
+  -
+    destruct in_list eqn:IH1. inversion H; subst. simpl.
+    apply in_nth in IH1. rewrite IH1. reflexivity.
+    inversion H.
+  -
+    destruct removenames eqn:IH1. inversion H; subst. apply IHt1 in IH1.
+    simpl. rewrite IH1. reflexivity. inversion H.
+  -
+    destruct removenames eqn:IH1. destruct (removenames l t1_2) eqn:IH2.
+    inversion H; subst; simpl.
+    apply IHt1_1 in IH1. apply IHt1_2 in IH2. rewrite IH1, IH2. reflexivity.
+    inversion H. inversion H.
+Qed.
+
+
 Fixpoint left_eval t :=
   match t with
   | app t1 t2 =>
