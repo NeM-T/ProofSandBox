@@ -22,14 +22,14 @@ let rec nat2int n =
 let rec string_of_debruijn t =
   match t with
   | App (t1, t2) -> "App ( " ^ (string_of_debruijn t1) ^ " ) ( " ^ (string_of_debruijn t2) ^ " )"
-  | Abs (x, t1)       -> "λ" ^ (char_list_to_string x) ^ ".( " ^ (string_of_debruijn t1) ^ " )"
+  | Abs (x, t1)       -> "fun " ^ (char_list_to_string x) ^ " => ( " ^ (string_of_debruijn t1) ^ " )"
   | Var n        -> string_of_int (nat2int n)
 
 
 let rec string_of_lambda t =
   match t with
   | App0 (t1, t2) -> "App ( " ^ (string_of_lambda t1) ^ " ) ( " ^ (string_of_lambda t2) ^ " )"
-  | Abs0 (x, t1)       -> "λ" ^ (char_list_to_string x) ^ ".( " ^ (string_of_lambda t1) ^ " )"
+  | Abs0 (x, t1)       -> "fun " ^ (char_list_to_string x) ^ " => ( " ^ (string_of_lambda t1) ^ " )"
   | Var0 x        -> char_list_to_string x
 
 let string_option f o =

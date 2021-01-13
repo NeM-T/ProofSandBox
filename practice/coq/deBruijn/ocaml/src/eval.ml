@@ -50,9 +50,10 @@ let rec eqb0 s1 s2 =
   | [] -> (match s2 with
            | [] -> true
            | _::_ -> false)
-  | c1::s1' -> (match s2 with
-                | [] -> false
-                | c2::s2' -> if (=) c1 c2 then eqb0 s1' s2' else false)
+  | c1::s1' ->
+    (match s2 with
+     | [] -> false
+     | c2::s2' -> if (=) c1 c2 then eqb0 s1' s2' else false)
 
 type deBruijn =
 | Var of nat
@@ -69,7 +70,8 @@ let rec shift k = function
 (** val subst : nat -> deBruijn -> deBruijn -> deBruijn **)
 
 let rec subst d s = function
-| Var x -> if Nat.eqb d x then s else if Nat.ltb d x then Var (Nat.pred x) else Var x
+| Var x ->
+  if Nat.eqb d x then s else if Nat.ltb d x then Var (Nat.pred x) else Var x
 | App (t1, t2) -> App ((subst d s t1), (subst d s t2))
 | Abs (x, t') -> Abs (x, (subst (S d) (shift O s) t'))
 
@@ -91,7 +93,8 @@ let rec inb x = function
 | [] -> false
 | h::t -> if eqb0 h x then true else inb x t
 
-(** val free_list : char list list -> char list list -> namelambda -> char list list **)
+(** val free_list :
+    char list list -> char list list -> namelambda -> char list list **)
 
 let rec free_list l1 l2 = function
 | Var0 x -> if if inb x l1 then true else inb x l2 then l2 else x::l2
@@ -104,16 +107,18 @@ let rec removenames l = function
 | Var0 x -> (match in_list x l O with
              | Some n -> Some (Var n)
              | None -> None)
-| Abs0 (x, t') -> (match removenames (x::l) t' with
-                   | Some t1 -> Some (Abs (x, t1))
-                   | None -> None)
+| Abs0 (x, t') ->
+  (match removenames (x::l) t' with
+   | Some t1 -> Some (Abs (x, t1))
+   | None -> None)
 | App0 (t1, t2) ->
   let o = removenames l t1 in
   let o0 = removenames l t2 in
   (match o with
-   | Some t1' -> (match o0 with
-                  | Some t2' -> Some (App (t1', t2'))
-                  | None -> None)
+   | Some t1' ->
+     (match o0 with
+      | Some t2' -> Some (App (t1', t2'))
+      | None -> None)
    | None -> None)
 
 (** val lambda_to_debruijn : namelambda -> deBruijn option **)
@@ -131,7 +136,8 @@ let rec nth l = function
            | [] -> None
            | _::t -> nth t n')
 
-(** val debruijn_to_lambda : char list list -> deBruijn -> namelambda option **)
+(** val debruijn_to_lambda :
+    char list list -> deBruijn -> namelambda option **)
 
 let rec debruijn_to_lambda l = function
 | Var n -> (match nth l n with
@@ -141,13 +147,15 @@ let rec debruijn_to_lambda l = function
   let o = debruijn_to_lambda l t1 in
   let o0 = debruijn_to_lambda l t2 in
   (match o with
-   | Some t1' -> (match o0 with
-                  | Some t2' -> Some (App0 (t1', t2'))
-                  | None -> None)
+   | Some t1' ->
+     (match o0 with
+      | Some t2' -> Some (App0 (t1', t2'))
+      | None -> None)
    | None -> None)
-| Abs (x, t1) -> (match debruijn_to_lambda (x::l) t1 with
-                  | Some t' -> Some (Abs0 (x, t'))
-                  | None -> None)
+| Abs (x, t1) ->
+  (match debruijn_to_lambda (x::l) t1 with
+   | Some t' -> Some (Abs0 (x, t'))
+   | None -> None)
 
 (** val left_eval : deBruijn -> deBruijn option **)
 
@@ -159,12 +167,14 @@ let rec left_eval = function
    | _ ->
      (match left_eval t1 with
       | Some t1' -> Some (App (t1', t2))
-      | None -> (match left_eval t2 with
-                 | Some t2' -> Some (App (t1, t2'))
-                 | None -> None)))
-| Abs (x, t1) -> (match left_eval t1 with
-                  | Some t1' -> Some (Abs (x, t1'))
-                  | None -> None)
+      | None ->
+        (match left_eval t2 with
+         | Some t2' -> Some (App (t1, t2'))
+         | None -> None)))
+| Abs (x, t1) ->
+  (match left_eval t1 with
+   | Some t1' -> Some (Abs (x, t1'))
+   | None -> None)
 
 (** val result_lambda : deBruijn -> char list list -> namelambda option **)
 

@@ -40,7 +40,8 @@ val in_list : char list -> char list list -> nat -> nat option
 
 val inb : char list -> char list list -> bool
 
-val free_list : char list list -> char list list -> namelambda -> char list list
+val free_list :
+  char list list -> char list list -> namelambda -> char list list
 
 val removenames : char list list -> namelambda -> deBruijn option
 
