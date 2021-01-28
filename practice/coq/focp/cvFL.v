@@ -28,36 +28,28 @@ Notation " 'λ' l ';' t " := (abs l t)(at level 50).
 Notation " e1 '-->>' e2 ';' e3" := (If e1 e2 e3) (at level 50).
 Notation " '<<' e1 ',' e2 '>>' " := (pair e1 e2) (at level 50).
 
-Fixpoint shift n t :=
+Fixpoint shift n up t :=
   match t with
   | const c => const c
-  | var x => var (if leb n x then (S x) else x)
-  | λ l; e1 =>
-     λ (map (shift n) l); (shift (S n) e1)
-  | <<e1, e2>> => << (shift n e1) , (shift n e2) >>
-  | app t1 t2 => app (shift n t1) (shift n t2)
+  | var x => var (if leb n x then (x + up) else x)
+  | λ l; e1 => λ (map (shift n up) l); (shift (n + length l) up e1)
+  | <<e1, e2>> => << (shift n up e1) , (shift n up e2) >>
+  | app t1 t2 => app (shift n up t1) (shift n up t2)
   | If e1 e2 e3 =>
-    If (shift n e1) (shift n e2) (shift n e3)
+    If (shift n up e1) (shift n up e2) (shift n up e3)
   end.
 
 Fixpoint subst n t l :=
   match t with
   | const c => const c
-  | var n1 =>
-    if n1 <? n then (var n1)
-    else (nth (n1 - n) l (var n1))
-  | λ l1 ; t1 =>
-    λ (map (fun t' => subst n t' l) l1) ; (subst n t1 l)
-  | << t1 , t2 >> =>
-    << (subst n t1 l) , (subst n t2 l)>>
-  | app t1 t2 =>
-    app (subst n t1 l) (subst n t2 l)
-  | t1 -->> t2; t3 =>
-     (subst n t1 l) -->> (subst n t2 l); (subst n t3 l)
+  | var n1 => if n1 <? n then (var n1) else (nth (n1 - n) l (var n1))
+  | λ l1 ; t1 => λ (map (fun t' => subst n t' l) l1) ; (subst (n + length l1) t1 (map (shift 0 (length l1)) l ))
+  | << t1 , t2 >> => << (subst n t1 l) , (subst n t2 l)>>
+  | app t1 t2 => app (subst n t1 l) (subst n t2 l)
+  | t1 -->> t2; t3 => (subst n t1 l) -->> (subst n t2 l); (subst n t3 l)
   end.
 
-Inductive FUN : Set :=
-  | Lambda : term -> FUN | PRED | ZEROP | FST | SND.
+Inductive FUN : Set := | Lambda : term -> FUN | PRED | ZEROP | FST | SND.
 
 Inductive Data : Set :=
 | NatData : nat -> Data
@@ -95,7 +87,7 @@ Inductive NatValue : term -> Prop :=
 | ZeroValue : NatValue (const Zero)
 | SucValue :forall t1, NatValue t1 -> NatValue (app (const Suc) t1).
 
-Fixpoint mynth {A: Type} n (l: list A) :=
+Fixpoint optnth {A: Type} n (l: list A) :=
   match n with
   | 0 => match l with
          | [] => None
@@ -103,18 +95,24 @@ Fixpoint mynth {A: Type} n (l: list A) :=
          end
   | S m => match l with
            | [] => None
-           | _ :: t => mynth m t
+           | _ :: t => optnth m t
            end
   end.
 
 Inductive EvalTerm : term -> (list Data) -> term -> Prop :=
 | ConstE: forall c E, EvalTerm (const c) E (const c)
-| VarE: forall n E d, mynth n E = Some d -> EvalTerm (var n) E (Data_to_term d)
+| VarE: forall n E d, optnth n E = Some d -> EvalTerm (var n) E (Data_to_term d)
 | PairE: forall e1 e2 E v1 v2, EvalTerm e1 E v1 -> EvalTerm e2 E v2 -> EvalTerm (<<e1, e2>>) E (<<v1, v2>>)
 | IfTE: forall e1 E e2 e3 v, EvalTerm e1 E (const T) -> EvalTerm e2 E v -> EvalTerm (If e1 e2 e3) E v
 | IfFE: forall e1 E e2 e3 v, EvalTerm e1 E (const F) -> EvalTerm e3 E v -> EvalTerm (If e1 e2 e3) E v
-| LambdaNilE: forall e E, EvalTerm (λ []; e) E (λ[];e)
-| LambdaConE: forall (e: term) E v e h t, EvalTerm h E v -> EvalTerm (λ (h::t);e) E (λ t; (subst 0 e [v])) .
+| LambdaE: forall e v E l, ListEval l E v -> EvalTerm (λ l; e) E (λ[]; (subst 0 e v))
+
+with ListEval : (list term) -> (list Data) -> (list term) -> Prop :=
+   | NilEval : forall E, ListEval nil E nil
+   | ConsEval : forall l1 l2 e E v, EvalTerm e E v -> ListEval l1 E l2 -> ListEval (e :: l1) E (v :: l2).
+
+Scheme EvalTerm_mut := Induction for EvalTerm Sort Prop
+with ListEval_mut := Induction for ListEval Sort Prop.
 
 Reserved Notation " t1 '->>' t2" (at level 20).
 Inductive ValueEval : term -> term -> Prop :=
@@ -123,6 +121,5 @@ Inductive ValueEval : term -> term -> Prop :=
 | SucVE : forall t1, NatValue t1 -> (app (const Suc) t1) ->> (app (const Suc) t1)
 | FstVE : forall t1 t2, (app (const Fst) (<< t1, t2 >>))  ->> t1
 | SndVE : forall t1 t2, (app (const Snd) (<< t1, t2 >>))  ->> t2
-| LambdaVE : forall t1 d v,
-    (EvalTerm t1 [d] v) -> app(λ nil; t1) (Data_to_term d) ->> v
+| LambdaVE : forall t1 d v, (EvalTerm t1 [d] v) -> app(λ nil; t1) (Data_to_term d) ->> v
 where "t1 ->> t2" := (ValueEval t1 t2).
