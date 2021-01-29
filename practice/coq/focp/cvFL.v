@@ -49,7 +49,7 @@ Fixpoint subst n t l :=
   | t1 -->> t2; t3 => (subst n t1 l) -->> (subst n t2 l); (subst n t3 l)
   end.
 
-Inductive FUN : Set := | Lambda : term -> FUN | PRED | ZEROP | FST | SND.
+Inductive FUN : Set := | Lambda : term -> FUN | SUC | PRED | ZEROP | FST | SND.
 
 Inductive Data : Set :=
 | NatData : nat -> Data
@@ -79,6 +79,7 @@ Fixpoint Data_to_term d :=
     | ZEROP => (const Zerop)
     | FST => (const Fst)
     | SND => (const Snd)
+    | SUC => (const Suc)
     end
   | PairData d1 d2 => << (Data_to_term d1), (Data_to_term d2) >>
   end.
@@ -98,6 +99,168 @@ Fixpoint optnth {A: Type} n (l: list A) :=
            | _ :: t => optnth m t
            end
   end.
+
+Definition optcons {A: Type} (x: A) (l: option (list A)) :=
+  match l with
+  | Some l' => Some (x :: l')
+  | None => None
+  end.
+
+Fixpoint optlist {A: Type} (l: list (option A)) : option (list A) :=
+  match l with
+  | nil => (Some nil)
+  | (Some h) :: t =>
+    optcons h (optlist t)
+  | None :: t => None
+  end.
+
+Fixpoint NatValueBool t :=
+  match t with
+  | const Zero => true
+  | app (const Suc) e2 => NatValueBool e2
+  | _ => false
+  end.
+
+Fixpoint EvalTerm_fix (E: list Data) t :=
+  match t with
+  | const c => Some (const c)
+  | var n =>
+    match optnth n E with
+    | Some d => Some (Data_to_term d)
+    | None => None
+    end
+  | pair e1 e2 =>
+    match (EvalTerm_fix E e1, EvalTerm_fix E e2) with
+    | (Some v1, Some v2) => Some (pair v1 v2)
+    | _ => None
+    end
+  | If e1 e2 e3 =>
+    match EvalTerm_fix E e1 with
+    | Some (const T) => EvalTerm_fix E e2
+    | Some (const F) => EvalTerm_fix E e3
+    | _ => None
+    end
+  | abs l e =>
+    match optlist (map (EvalTerm_fix E) l) with
+    | Some vl => Some (abs [] (subst 0 e vl))
+    | None => None
+    end
+  | app e1 e2 =>
+    match e1 with
+    | const Zerop => match e2 with
+                     | const Zero => Some (const T)
+                     | _ => Some (const F)
+                     end
+    | const Suc => if NatValueBool e2 then Some t else None
+    | const Pred => match e2 with
+                    | app (const Suc) v => if NatValueBool v then Some v else None
+                    | _ => None
+                    end
+    | const Fst => match EvalTerm_fix E e2 with
+                   | Some (pair v _) => Some v
+                   | _ => None
+                   end
+    | const Snd => match EvalTerm_fix E e2 with
+                   | Some (pair _ v) => Some v
+                   | _ => None
+                   end
+    | _ => None
+    end
+  end.
+
+Lemma NatValueData : forall t,
+    NatValueBool t = true ->
+    exists n,t = (Data_to_term((NatData n))).
+Proof.
+  induction t; simpl; intros; try discriminate.
+  destruct c; try discriminate.
+  exists 0. reflexivity.
+  destruct t1; try discriminate.
+  destruct c; try discriminate. apply IHt2 in H. destruct H.
+  exists (S x). simpl in H. subst. simpl. reflexivity.
+Qed.
+
+Lemma PairDataEx : forall t1 t2 x,
+    pair t1 t2 = Data_to_term x ->
+    exists v1 v2, x = PairData v1 v2.
+Proof.
+  intros.
+  induction x.
+  destruct n; simpl in H; try discriminate.
+  destruct b; simpl in H; try discriminate.
+  destruct f; simpl in H; try discriminate.
+  inversion H; subst. exists x1, x2; reflexivity.
+Qed.
+
+Theorem EvalIsData : forall t E v,
+    EvalTerm_fix E t = Some v ->
+    exists d, v = (Data_to_term d).
+Proof.
+  induction t; simpl; intros.
+  -
+    inversion H; subst. destruct c.
+    exists (BoolData true); reflexivity.
+    exists (BoolData false); reflexivity.
+    exists (NatData 0); reflexivity.
+    exists (FuncData SUC); reflexivity.
+    exists (FuncData PRED); reflexivity.
+    exists (FuncData ZEROP); reflexivity.
+    exists (FuncData FST); reflexivity.
+    exists (FuncData SND); reflexivity.
+  -
+    destruct optnth eqn:IH; try discriminate.
+    inversion H; subst. eexists; eauto.
+  -
+    destruct optlist eqn:IH; try discriminate.
+    inversion H; subst.
+    exists (FuncData (Lambda (subst 0 t l0))); reflexivity.
+  -
+    destruct EvalTerm_fix eqn:IH1; try discriminate.
+    destruct (EvalTerm_fix E t2) eqn:IH2; try discriminate.
+    apply IHt1 in IH1. apply IHt2 in IH2. destruct IH1. destruct IH2.
+    inversion H; subst. exists (PairData x x0); reflexivity.
+  -
+    destruct t1; try discriminate.
+    destruct c; try discriminate.
+    +
+      destruct NatValueBool eqn:IH; try discriminate.
+      inversion H; subst.
+      apply NatValueData in IH. destruct IH. subst. exists (NatData (S x)). reflexivity.
+    +
+      destruct t2; try discriminate.
+      destruct t2_1; try discriminate.
+      destruct c; try discriminate.
+      destruct NatValueBool eqn:IH; try discriminate.
+      inversion H; subst. apply NatValueData in IH. destruct IH.
+      exists (NatData x). subst. reflexivity.
+    +
+      destruct t2; try solve [inversion H; subst; exists (BoolData false); reflexivity].
+      destruct c; inversion H; subst; try solve [exists (BoolData false); reflexivity].
+      exists (BoolData true). reflexivity.
+    +
+      destruct EvalTerm_fix eqn:IH1; try discriminate.
+      destruct t; try discriminate.
+      apply IHt2 in IH1. destruct IH1. inversion H0; subst.
+      apply PairDataEx in H2. destruct H2. destruct H1. subst.
+      inversion H0; subst. inversion H; subst. exists x0. reflexivity.
+    +
+      destruct EvalTerm_fix eqn:IH1; try discriminate.
+      destruct t; try discriminate.
+      apply IHt2 in IH1. destruct IH1. inversion H0; subst.
+      apply PairDataEx in H2. destruct H2. destruct H1. subst.
+      inversion H0; subst. inversion H; subst. exists x1. reflexivity.
+  -
+    destruct EvalTerm_fix; try discriminate.
+    destruct t; try discriminate.
+    destruct c; try discriminate.
+    eapply IHt2; eauto.
+    eapply IHt3; eauto.
+Qed.
+
+
+
+
+
 
 Inductive EvalTerm : term -> (list Data) -> term -> Prop :=
 | ConstE: forall c E, EvalTerm (const c) E (const c)
