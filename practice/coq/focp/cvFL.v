@@ -1,6 +1,8 @@
 Require Import Nat.
 Require Import List.
 Import ListNotations.
+Set Implicit Arguments.
+Set Asymmetric Patterns.
 
 Inductive constant := | T | F | Zero | Suc | Pred | Zerop | Fst | Snd.
 
@@ -38,6 +40,41 @@ Fixpoint shift n up t :=
   | If e1 e2 e3 =>
     If (shift n up e1) (shift n up e2) (shift n up e3)
   end.
+
+Section term_ind'.
+
+Variable P : term -> Prop.
+
+Fixpoint All (ls : list term) : Prop :=
+match ls with
+| [] => True
+| h :: t => P h /\ All t
+end.
+
+Hypothesis const_case : forall c: constant,  P (const c).
+Hypothesis var_case : forall n: nat,  P (var n).
+Hypothesis abs_case : forall (l: list term) (t: term), All l -> P t -> P (abs l t).
+Hypothesis app_case : forall t1 t2: term, P t1 -> P t2 -> P (app t1 t2).
+Hypothesis pair_case : forall t1 t2: term, P t1 -> P t2 -> P (pair t1 t2).
+Hypothesis if_case : forall t1 t2 t3: term, P t1 -> P t2 -> P t3 -> P (If t1 t2 t3).
+
+Fixpoint term_ind' (t: term) : P t :=
+  match t with
+  | const c => (const_case c)
+  | var n => (var_case n)
+  | app t1 t2 => app_case (term_ind' t1) (term_ind' t2)
+  | pair t1 t2 => pair_case (term_ind' t1) (term_ind' t2)
+  | If t1 t2 t3 => if_case (term_ind' t1) (term_ind' t2) (term_ind' t3)
+  | abs l e =>
+    abs_case l
+      ((fix map_ind ls : All ls :=
+          match ls with
+          | [] => I
+          | h :: tl => conj (term_ind' h) (map_ind tl)
+          end)l) (term_ind' e)
+  end.
+
+End term_ind'.
 
 Fixpoint subst n t l :=
   match t with
@@ -121,50 +158,131 @@ Fixpoint NatValueBool t :=
   | _ => false
   end.
 
+Fixpoint eqb_const c1 c2 :=
+  match (c1, c2) with
+  | (T, T) => true
+  | (F, F) => true
+  | (Zero, Zero) => true
+  | (Suc, Suc) => true
+  | (Pred, Pred) => true
+  | (Zerop, Zerop) => true
+  | (Fst, Fst) => true
+  | (Snd, Snd) => true
+  | _ => false
+  end.
+
+Fixpoint Term_to_Nat t :=
+  match t with
+  | const Zero => Some 0
+  | app (const Suc) e =>
+    match Term_to_Nat e with
+    | Some n => Some (S n)
+    | None => None
+    end
+  | _ => None
+  end.
+
+Fixpoint Term_to_Data t :=
+  match t with
+  | (const c) =>
+    match c with
+    | T => Some (BoolData true)
+    | F => Some (BoolData false)
+    | Zero => Some (NatData 0)
+    | Suc => Some (FuncData SUC)
+    | Pred => Some (FuncData PRED)
+    | Zerop => Some (FuncData ZEROP)
+    | Fst => Some (FuncData FST)
+    | Snd => Some (FuncData SND)
+    end
+  | pair e1 e2 =>
+    match (Term_to_Data e1, Term_to_Data e2) with
+    | (Some d1, Some d2) => Some (PairData d1 d2)
+    | _ => None
+    end
+  | abs [] e => Some (FuncData (Lambda e))
+  | app (const Suc) e =>
+    match Term_to_Nat e with
+    | Some n => Some (NatData (S n))
+    | None => None
+    end
+  | _ => None
+  end.
+
+Fixpoint isval t :=
+  match t with
+  | const _ => true
+  | pair t1 t2 => andb (isval t1) (isval t2)
+  | abs [] _ => true
+  | app (const Suc) n => if NatValueBool n then true else false
+  | _ => false
+  end.
+
+Fixpoint boolList {A: Type} (F: A -> bool) (l: list A) :=
+  match l with
+  | [] => true
+  | h :: t => andb (F h) (boolList F t)
+  end.
+
 Fixpoint EvalTerm_fix (E: list Data) t :=
   match t with
   | const c => Some (const c)
-  | var n =>
-    match optnth n E with
-    | Some d => Some (Data_to_term d)
-    | None => None
-    end
+  | var n => match optnth n E with
+             | Some d => Some (Data_to_term d)
+             | None => None
+             end
   | pair e1 e2 =>
-    match (EvalTerm_fix E e1, EvalTerm_fix E e2) with
-    | (Some v1, Some v2) => Some (pair v1 v2)
-    | _ => None
+    match (isval e1, isval e2) with
+    | (false, _) => match EvalTerm_fix E e1 with
+                    | Some v1 => Some (pair v1 e2)
+                    | None => None
+                    end
+    | (true, false) => match EvalTerm_fix E e2 with
+                       | Some v2 => Some (pair e1 v2)
+                       | None => None
+                       end
+    | (true, true) => Some (pair e1 e2)
     end
   | If e1 e2 e3 =>
-    match EvalTerm_fix E e1 with
-    | Some (const T) => EvalTerm_fix E e2
-    | Some (const F) => EvalTerm_fix E e3
-    | _ => None
-    end
+    if isval e1 then
+      match e1 with
+      | const T => EvalTerm_fix E e2
+      | const F => EvalTerm_fix E e3
+      | _ => None
+      end
+    else EvalTerm_fix E e1
   | abs l e =>
     match optlist (map (EvalTerm_fix E) l) with
-    | Some vl => Some (abs [] (subst 0 e vl))
+    | Some vl =>
+      if boolList isval vl then Some (abs [] (subst 1 e vl)) else Some (abs vl e)
     | None => None
     end
-  | app e1 e2 =>
-    match e1 with
-    | const Zerop => match e2 with
-                     | const Zero => Some (const T)
-                     | _ => Some (const F)
-                     end
-    | const Suc => if NatValueBool e2 then Some t else None
-    | const Pred => match e2 with
-                    | app (const Suc) v => if NatValueBool v then Some v else None
-                    | _ => None
+  | app t1 t2 =>
+    match (isval t1, isval t2) with
+    | (false, _) => match EvalTerm_fix E t1 with
+                    | Some v1 => Some (app v1 t2)
+                    | None => None
                     end
-    | const Fst => match EvalTerm_fix E e2 with
-                   | Some (pair v _) => Some v
-                   | _ => None
-                   end
-    | const Snd => match EvalTerm_fix E e2 with
-                   | Some (pair _ v) => Some v
-                   | _ => None
-                   end
-    | _ => None
+    | (true, false) => match EvalTerm_fix E t2 with
+                       | Some v2 => Some (app t1 v2)
+                       | None => None
+                       end
+    | (true, true) =>
+      match (t1, t2) with
+      | (const Zerop, v2)=> match v2 with
+                              | const Zero => Some (const T)
+                              | _ => Some (const F)
+                            end
+      | (const Suc, v2) => if NatValueBool v2 then Some (app t1 t2) else None
+      | (const Fst, pair v1 v2) => Some v1
+      | (const Snd, pair v1 v2) => Some v2
+      | (abs [] e, v2) =>
+        match Term_to_Data v2 with
+        | Some v => EvalTerm_fix [v] e
+        | None => None
+        end
+      | _ => None
+      end
     end
   end.
 
@@ -192,6 +310,148 @@ Proof.
   inversion H; subst. exists x1, x2; reflexivity.
 Qed.
 
+Lemma NatValue_to_Term : forall n,
+    NatValueBool (Nat_to_term n) = true.
+Proof.
+  induction n; simpl; intros; auto.
+Qed.
+
+Lemma substnil : forall t n,
+    subst n t nil = t.
+Proof.
+  induction t using term_ind'; simpl; intros; auto.
+  -
+    destruct ltb; auto.
+    destruct (n - n0); auto.
+  -
+    rewrite IHt. clear IHt.
+    induction l; auto.
+    rewrite map_cons. simpl in H. destruct H. rewrite H. apply IHl in H0. inversion H0; subst.
+    repeat rewrite H2. reflexivity.
+  -
+    rewrite IHt1, IHt2. reflexivity.
+  -
+    rewrite IHt1, IHt2. reflexivity.
+  -
+    rewrite IHt1, IHt2, IHt3; reflexivity.
+Qed.
+
+Lemma NatTerm_is_value : forall n,
+    NatValueBool n = true -> isval n = true.
+Proof.
+  induction n; simpl; intros; try discriminate; auto.
+  destruct n1; try discriminate.
+  destruct c; try discriminate. rewrite H; auto.
+Qed.
+
+Lemma Data_to_term_is_value : forall d,
+    isval (Data_to_term d) =  true.
+Proof.
+  induction d; simpl; auto.
+  -
+    rewrite NatTerm_is_value; auto. apply NatValue_to_Term.
+  -
+    destruct b; auto.
+  -
+    destruct f; auto.
+  -
+    rewrite IHd1, IHd2. reflexivity.
+Qed.
+
+Theorem DataEvalRefl : forall d E,
+    EvalTerm_fix E (Data_to_term d) = Some (Data_to_term d).
+Proof.
+  induction d; simpl; intros; auto.
+  -
+    induction n; simpl; auto.
+    rewrite NatTerm_is_value; rewrite NatValue_to_Term; reflexivity.
+  -
+    destruct b; simpl; auto.
+  -
+    induction f; simpl; auto.
+    rewrite substnil. reflexivity.
+  -
+    rewrite IHd1, IHd2.
+    repeat rewrite Data_to_term_is_value.
+    reflexivity.
+Qed.
+
+(*
+Fixpoint EvalTerm_fix (E: list Data) t :=
+  match t with
+  | const c => Some (const c)
+  | var n =>
+    match optnth n E with
+    | Some d => Some (Data_to_term d)
+    | None => None
+    end
+  | pair e1 e2 =>
+    match (EvalTerm_fix E e1, EvalTerm_fix E e2) with
+    | (Some v1, Some v2) => Some (pair v1 v2)
+    | _ => None
+    end
+  | If e1 e2 e3 =>
+    match EvalTerm_fix E e1 with
+    | Some (const T) => EvalTerm_fix E e2
+    | Some (const F) => EvalTerm_fix E e3
+    | _ => None
+    end
+  | abs l e =>
+    match optlist (map (EvalTerm_fix E) l) with
+    | Some vl => Some (abs [] (subst 1 e vl))
+    | None => None
+    end
+  | app t1 t2 =>
+    match (EvalTerm_fix E t1, EvalTerm_fix E t2) with
+    | (Some e1, Some e2) =>
+      match e1 with
+      | const Zerop => match e2 with
+                       | const Zero => Some (const T)
+                       | _ => Some (const F)
+                       end
+      | const Suc => if NatValueBool e2 then Some (app e1 e2) else None
+      | const Pred => match e2 with
+                      | app (const Suc) v => if NatValueBool v then Some v else None
+                      | _ => None
+                      end
+      | const Fst => match e2 with
+                     | pair v _ => Some v
+                     | _ => None
+                     end
+      | const Snd => match e2 with
+                     | pair _ v => Some v
+                     | _ => None
+                     end
+      (*
+      | abs [] e => 
+        match Term_to_Data t2 with
+        | Some v => EvalTerm_fix [v] e
+        | None => None
+        end
+       *)
+      | _ => None
+      end
+    | _ => None
+    end
+  end.
+
+
+Theorem DataEvalRefl : forall d E,
+    EvalTerm_fix E (Data_to_term d) = Some (Data_to_term d).
+Proof.
+  induction d; simpl; intros; auto.
+  -
+    induction n; simpl; auto.
+    rewrite IHn. rewrite NatValue_to_Term. reflexivity.
+  -
+    destruct b; simpl; auto.
+  -
+    induction f; simpl; auto.
+    rewrite substnil. reflexivity.
+  -
+    rewrite IHd1, IHd2. reflexivity.
+Qed.
+
 Theorem EvalIsData : forall t E v,
     EvalTerm_fix E t = Some v ->
     exists d, v = (Data_to_term d).
@@ -213,42 +473,49 @@ Proof.
   -
     destruct optlist eqn:IH; try discriminate.
     inversion H; subst.
-    exists (FuncData (Lambda (subst 0 t l0))); reflexivity.
+    exists (FuncData (Lambda (subst 1 t l0))); reflexivity.
   -
     destruct EvalTerm_fix eqn:IH1; try discriminate.
     destruct (EvalTerm_fix E t2) eqn:IH2; try discriminate.
     apply IHt1 in IH1. apply IHt2 in IH2. destruct IH1. destruct IH2.
     inversion H; subst. exists (PairData x x0); reflexivity.
   -
-    destruct t1; try discriminate.
+    destruct EvalTerm_fix eqn:IH1; try discriminate.
+    destruct (EvalTerm_fix E t2) eqn:IH2; try discriminate.
+    destruct t; try discriminate.
     destruct c; try discriminate.
     +
       destruct NatValueBool eqn:IH; try discriminate.
       inversion H; subst.
-      apply NatValueData in IH. destruct IH. subst. exists (NatData (S x)). reflexivity.
+      generalize IH1; generalize IH2; intros.
+      apply IHt1 in IH1; destruct IH1. apply IHt2 in IH2; destruct IH2.
+      inversion H1; subst.
+      apply NatValueData in IH. destruct IH. exists (NatData (S x1)). simpl. inversion H1; subst. reflexivity.
     +
-      destruct t2; try discriminate.
-      destruct t2_1; try discriminate.
+      destruct t0; try discriminate.
+      destruct t0_1; try discriminate.
       destruct c; try discriminate.
       destruct NatValueBool eqn:IH; try discriminate.
       inversion H; subst. apply NatValueData in IH. destruct IH.
       exists (NatData x). subst. reflexivity.
     +
-      destruct t2; try solve [inversion H; subst; exists (BoolData false); reflexivity].
+      destruct t0; try solve [inversion H; subst; exists (BoolData false); reflexivity].
       destruct c; inversion H; subst; try solve [exists (BoolData false); reflexivity].
       exists (BoolData true). reflexivity.
     +
-      destruct EvalTerm_fix eqn:IH1; try discriminate.
-      destruct t; try discriminate.
-      apply IHt2 in IH1. destruct IH1. inversion H0; subst.
-      apply PairDataEx in H2. destruct H2. destruct H1. subst.
-      inversion H0; subst. inversion H; subst. exists x0. reflexivity.
+      destruct t0; try discriminate.
+      apply IHt1 in IH1. apply IHt2 in IH2. destruct IH1. destruct IH2.
+      generalize H1; intros. inversion H; subst. apply PairDataEx in H1. destruct H1. destruct H1. subst.
+      inversion H2; subst. exists x1; reflexivity.
     +
-      destruct EvalTerm_fix eqn:IH1; try discriminate.
-      destruct t; try discriminate.
-      apply IHt2 in IH1. destruct IH1. inversion H0; subst.
-      apply PairDataEx in H2. destruct H2. destruct H1. subst.
-      inversion H0; subst. inversion H; subst. exists x1. reflexivity.
+      destruct t0; try discriminate.
+      apply IHt1 in IH1. apply IHt2 in IH2. destruct IH1. destruct IH2.
+      generalize H1; intros. inversion H; subst. apply PairDataEx in H1. destruct H1. destruct H1. subst.
+      inversion H2; subst. exists x2; reflexivity.
+    (*
+    +
+      admit.
+     *)
   -
     destruct EvalTerm_fix; try discriminate.
     destruct t; try discriminate.
@@ -256,11 +523,7 @@ Proof.
     eapply IHt2; eauto.
     eapply IHt3; eauto.
 Qed.
-
-
-
-
-
+ *)
 
 Inductive EvalTerm : term -> (list Data) -> term -> Prop :=
 | ConstE: forall c E, EvalTerm (const c) E (const c)
@@ -269,7 +532,20 @@ Inductive EvalTerm : term -> (list Data) -> term -> Prop :=
 | IfTE: forall e1 E e2 e3 v, EvalTerm e1 E (const T) -> EvalTerm e2 E v -> EvalTerm (If e1 e2 e3) E v
 | IfFE: forall e1 E e2 e3 v, EvalTerm e1 E (const F) -> EvalTerm e3 E v -> EvalTerm (If e1 e2 e3) E v
 | LambdaE: forall e v E l, ListEval l E v -> EvalTerm (λ l; e) E (λ[]; (subst 0 e v))
-
+| app_ZeopT : forall e1 e2 E,
+    EvalTerm e1 E (const Zerop) -> EvalTerm e2 E (const Zero) -> EvalTerm (app e1 e2) E (const T)
+| app_ZeropF : forall e1 e2 v E,
+    EvalTerm e1 E (const Zerop) -> EvalTerm e2 E v -> v <> (const Zero) -> EvalTerm (app e1 e2) E (const F)
+| app_Suc : forall e1 e2 E v,
+    EvalTerm e1 E (const Suc) -> EvalTerm e2 E v -> NatValue v ->
+    EvalTerm (app e1 e2) E (app (const Suc) v)
+| app_Fst : forall e1 e2 v1 v2 E,
+    EvalTerm e1 E (const Fst) -> EvalTerm e2 E (pair v1 v2) -> EvalTerm (app e1 e2) E v1
+| app_Snd : forall e1 e2 v1 v2 E,
+    EvalTerm e1 E (const Snd) -> EvalTerm e2 E (pair v1 v2) -> EvalTerm (app e1 e2) E v2
+| app_abs : forall e1 e2 e v0 d E v,
+    EvalTerm e1 E (abs [] e) -> EvalTerm e2 E v0 ->
+    Term_to_Data v0 = Some d -> EvalTerm e [d] v -> EvalTerm (app e1 e2) E v
 with ListEval : (list term) -> (list Data) -> (list term) -> Prop :=
    | NilEval : forall E, ListEval nil E nil
    | ConsEval : forall l1 l2 e E v, EvalTerm e E v -> ListEval l1 E l2 -> ListEval (e :: l1) E (v :: l2).
@@ -277,12 +553,7 @@ with ListEval : (list term) -> (list Data) -> (list term) -> Prop :=
 Scheme EvalTerm_mut := Induction for EvalTerm Sort Prop
 with ListEval_mut := Induction for ListEval Sort Prop.
 
-Reserved Notation " t1 '->>' t2" (at level 20).
-Inductive ValueEval : term -> term -> Prop :=
-| ZeropT : (app (const Zerop) (const Zero)) ->> (const T)
-| ZeropF : forall v, v <> (const Zero) -> (app (const Zerop) v) ->> (const F)
-| SucVE : forall t1, NatValue t1 -> (app (const Suc) t1) ->> (app (const Suc) t1)
-| FstVE : forall t1 t2, (app (const Fst) (<< t1, t2 >>))  ->> t1
-| SndVE : forall t1 t2, (app (const Snd) (<< t1, t2 >>))  ->> t2
-| LambdaVE : forall t1 d v, (EvalTerm t1 [d] v) -> app(λ nil; t1) (Data_to_term d) ->> v
-where "t1 ->> t2" := (ValueEval t1 t2).
+Theorem TermEvalUnique : forall t E v1 v2,
+    EvalTerm t E v1 -> EvalTerm t E v2 -> v1 = v2.
+Proof.
+Abort.
