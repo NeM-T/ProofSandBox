@@ -69,9 +69,10 @@ Module eval.
 Import Syntax.
 
 Inductive exval : Set :=
-| NatV : nat -> exval
+| NatV  : nat -> exval
 | BoolV : bool -> exval
-| ProcV : id -> exp -> list (id * exval) -> exval.
+| ProcV : id -> exp -> list (id * exval) -> exval
+| RecV  : id -> id -> exp -> list (id * exval) -> exval.
 
 Definition dnval := exval.
 
@@ -117,9 +118,14 @@ Inductive eval_exp : envt -> exp -> exval -> Prop :=
     e2[[env]] --> arg ->
       body[[Environment.extend x arg env']] --> v ->
     (AppExp e1 e2)[[env]] --> v
-| RecV : forall x para e1 e2 v env,
-    e2[[Environment.extend x (ProcV para e1 nil) env]] --> v ->
+| RecE : forall x para e1 e2 v env,
+    e2[[Environment.extend x (RecV x para e1 env) env]] --> v ->
     (RecExp x para e1 e2)[[env]] --> v
+| AppRecE : forall v e1 v2 e2 f x body E env,
+    let ev := (RecV f x body E) in
+    e1[[env]] --> ev -> e2[[env]] --> v2 ->
+    body[[Environment.extend f ev (Environment.extend x v2 E)]] --> v ->
+    (AppExp e1 e2)[[env]] --> v
 
 where " e '[[' env ']]' '-->' v " := (eval_exp env e v).
 
@@ -155,14 +161,31 @@ Example evalExa3 :
                  (ilit 1)
   ) (AppExp (var "fact") (ilit 3)))[[nil]] --> (NatV 6).
 Proof.
-  eapply RecV. eapply AppE. apply VarE. simpl. reflexivity. apply IlitE.
+  eapply RecE. eapply AppRecE. apply VarE. simpl. reflexivity. apply IlitE.
   apply IfTrueE. eapply BinOpE. apply IlitE. apply VarE. simpl. reflexivity.
   compute. reflexivity.
   eapply BinOpE. apply VarE. simpl. reflexivity.
-  eapply AppE. apply VarE. simpl. admit.
+  eapply AppRecE. apply VarE. simpl. reflexivity.
   eapply BinOpE. apply VarE. simpl. reflexivity.
   apply IlitE. compute. reflexivity.
-Abort.
+  apply IfTrueE. eapply BinOpE. apply IlitE. apply VarE. simpl. reflexivity.
+  compute. reflexivity.
+  eapply BinOpE. apply VarE. simpl. reflexivity.
+  eapply AppRecE. apply VarE. simpl. reflexivity.
+  eapply BinOpE. apply VarE. simpl. reflexivity.
+  apply IlitE. compute. reflexivity.
+  apply IfTrueE. eapply BinOpE. apply IlitE. apply VarE. simpl. reflexivity.
+  compute. reflexivity.
+  eapply BinOpE. apply VarE. simpl. reflexivity.
+  eapply AppRecE. apply VarE. simpl. reflexivity.
+  eapply BinOpE. apply VarE. simpl. reflexivity.
+  apply IlitE. compute. reflexivity.
+  apply IfFalseE. eapply BinOpE. apply IlitE. apply VarE. simpl. reflexivity.
+  compute. reflexivity.
+  apply IlitE. compute. reflexivity.
+  compute. reflexivity.
+  compute. reflexivity.
+Qed.
 
 End example.
 
