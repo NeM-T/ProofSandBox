@@ -13,7 +13,9 @@ Inductive exp : Set :=
 | blit : bool -> exp
 | BinOp : binOp -> exp -> exp -> exp
 | IfExp : exp -> exp -> exp -> exp
-| LET : id -> exp -> exp -> exp.
+| LET : id -> exp -> exp -> exp
+| FunExp : id -> exp -> exp
+| AppExp : exp -> exp -> exp.
 
 Inductive program : Set :=
 | Exp : exp -> program
@@ -66,7 +68,8 @@ Import Syntax.
 
 Inductive exval : Set :=
 | NatV : nat -> exval
-| BoolV : bool -> exval.
+| BoolV : bool -> exval
+| ProcV : id -> exp -> list (id * exval) -> exval.
 
 Definition dnval := exval.
 
@@ -84,6 +87,42 @@ Definition apply_prim op arg1 arg2 :=
   | (Lt, _, _) => Err ("Both arguments must be integer: <")
   end.
 
+Definition envt := (Environment.t exval).
+
+Reserved Notation " t '[[' e ']]' '-->' t' " (at level 40).
+Inductive eval_exp : envt -> exp -> exval -> Prop :=
+| VarE : forall x v env,
+    Environment.lookup x env = Some v -> (var x)[[env]] --> v
+| IlitE : forall n env, (ilit n)[[env]] --> (NatV n)
+| BlitE : forall b env, (blit b)[[env]] --> (BoolV b)
+| BinOpE : forall op e1 e2 v1 v2 env v,
+    e1[[env]] --> v1 -> e2[[env]] --> v2 -> (apply_prim op v1 v2) = Som v ->
+    (BinOp op e1 e2)[[env]] --> v
+| IfTrueE : forall e1 e2 e3 v env,
+    e1 [[env]] --> (BoolV true) -> e2[[env]] --> v ->
+    (IfExp e1 e2 e3)[[env]] --> v
+| IfFalseE : forall e1 e2 e3 v env,
+    e1 [[env]] --> (BoolV false) -> e3[[env]] --> v ->
+    (IfExp e1 e2 e3)[[env]] --> v
+| LetE : forall x e1 e2 v1 v env,
+    e1[[env]] --> v1 -> e2[[(Environment.extend x v env)]] --> v ->
+    (LET x e1 e2)[[env]] --> v
+| FunE : forall x e env, (FunExp x e)[[env]] --> (ProcV x e env)
+| AppE : forall e1 e2 body env' x v arg env,
+    e1[[env]] --> (ProcV x body env') ->
+    e2[[env]] --> arg ->
+      body[[Environment.extend x arg env']] --> v ->
+    (AppExp e1 e2)[[env]] --> v
+
+where " e '[[' env ']]' '-->' v " := (eval_exp env e v).
+
+Inductive eval_decl : envt -> program -> (string * envt * exval) -> Prop :=
+| ExpE : forall e env v,
+    e[[env]] --> v -> eval_decl env (Exp e) ("-"%string, env, v)
+| DeclP : forall x e v env,
+    e[[env]] --> v -> eval_decl env (Decl x e) (x, Environment.extend x v env, v).
+
+(*
 Fixpoint eval_exp env e :=
   match e with
   | var x => match Environment.lookup x env with
@@ -110,6 +149,18 @@ Fixpoint eval_exp env e :=
       eval_exp (Environment.extend id value env) e2
     | Err s => Err s
     end
+  | FunExp x exp => Som (ProcV x exp env)
+  | AppExp e1 e2 =>
+    match (eval_exp env e1, eval_exp env e2) with
+    | (Som funval, Som arg) =>
+      match funval with
+      | ProcV x body env' =>
+        eval_exp (Environment.extend x arg env') body
+      | _ => Err "Non-function value is applied"
+      end
+    | (Err s, _) => Err s
+    | (_ ,Err s) => Err s
+    end
   end.
 
 Definition eval_decl env p :=
@@ -125,5 +176,6 @@ Definition eval_decl env p :=
     | Err s => Err s
     end
   end.
+ *)
 
 End eval.
