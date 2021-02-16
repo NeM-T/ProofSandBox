@@ -5,7 +5,7 @@ Import ListNotations.
 Module Syntax.
 Definition id : Set := string.
 
-Inductive binOp : Set := Plus | Mult | Minus | Lt.
+Inductive binOp : Set := Plus | Mult | Minus | Lt | Band | Bor.
 
 Inductive exp : Set :=
 | var : id -> exp
@@ -28,9 +28,8 @@ Definition tyvar := nat.
 Inductive ty : Set :=
 | TyNat
 | TyBool
-| TyVar : tyvar -> ty
-| TyFun : ty -> ty -> ty
-| TyList : ty -> ty.
+(* | TyVar : tyvar -> ty *)
+| TyFun : ty -> ty -> ty.
 
 End Syntax.
 
@@ -89,7 +88,11 @@ Definition apply_prim op arg1 arg2 :=
   | (Minus, NatV i1, NatV i2) => Som (NatV (i1 - i2))
   | (Minus, _ , _) => Err "Both arguments must be integer: -"
   | (Lt, NatV i1, NatV i2) => Som (BoolV (Nat.ltb i1 i2))
-  | (Lt, _, _) => Err ("Both arguments must be integer: <")
+  | (Lt, _, _) => Err "Both arguments must be integer: <"
+  | (Band, BoolV b1, BoolV b2) => Som(BoolV (andb b1 b2))
+  | (Band, _, _) => Err "Both arguments must be bool: and"
+  | (Bor, BoolV b1, BoolV b2) => Som(BoolV (orb b1 b2))
+  | (Bor, _, _) => Err "Both arguments must be bool: or"
   end.
 
 Definition envt := (Environment.t exval).
@@ -187,7 +190,72 @@ Proof.
   compute. reflexivity.
 Qed.
 
+Fixpoint fact n :=
+  match n with
+  | 0 => 1
+  | S m => n * (fact m)
+  end.
+
+Lemma fact_correct : forall n,
+  (RecExp "fact" "n"
+          (IfExp (BinOp Lt (ilit 0) (var "n"))
+                 (BinOp Mult (var "n") (AppExp (var "fact") (BinOp Minus (var "n") (ilit 1)) ) )
+                 (ilit 1)
+  ) (AppExp (var "fact") (ilit n)))[[nil]] --> (NatV (fact n)).
+Proof.
+  induction n.
+  -
+    apply RecE. eapply AppRecE. constructor.
+    simpl. reflexivity.
+    constructor.
+    apply IfFalseE; repeat (econstructor; eauto).
+  -
+    inversion IHn; subst.
+    inversion H5; subst.
+    inversion H1; subst. simpl in H2. inversion H2.
+    inversion H1; subst. simpl in H2. inversion H2; subst.
+    constructor. eapply AppRecE; eauto. econstructor.
+    apply IfTrueE. econstructor. constructor. constructor. simpl. reflexivity.
+    compute. reflexivity.
+    econstructor. constructor. simpl. reflexivity.
+    eapply AppRecE; eauto. constructor. simpl. reflexivity.
+    econstructor. constructor. simpl. reflexivity. constructor.
+    inversion H3; subst. unfold apply_prim. simpl. rewrite <- Minus.minus_n_O. reflexivity.
+    unfold apply_prim. simpl. reflexivity.
+Qed.
+
 End example.
+
+Theorem Eval_Unique : forall e env v1 v2,
+    e[[env]] --> v1 -> e[[env]] --> v2 ->
+    v1 = v2.
+Proof.
+  intros. generalize dependent v2. induction H; intros; try solve [inversion H0; subst; reflexivity].
+  -
+    inversion H0; subst. rewrite H in H3. inversion H3; subst. reflexivity.
+  -
+    inversion H2; subst. apply IHeval_exp1 in H7. apply IHeval_exp2 in H9. subst.
+    rewrite H1 in H10. inversion H10; subst. reflexivity.
+  -
+    inversion H1; subst. apply IHeval_exp2. apply H8.
+    apply IHeval_exp1 in H7. inversion H7.
+  -
+    inversion H1; subst.
+    apply IHeval_exp1 in H7. inversion H7.
+    apply IHeval_exp2. apply H8.
+  -
+    inversion H1; subst. apply IHeval_exp1 in H7. subst. apply IHeval_exp2 in H8. apply H8.
+  -
+    inversion H2; subst. apply IHeval_exp1 in H5. inversion H5; subst.
+    apply IHeval_exp2 in H7. subst. apply IHeval_exp3 in H9. apply H9.
+    apply IHeval_exp1 in H5. inversion H5; subst.
+  -
+    inversion H0; subst. apply IHeval_exp in H7. apply H7.
+  -
+    inversion H2; subst. apply IHeval_exp1 in H5. inversion H5.
+    apply IHeval_exp1 in H5. inversion H5; subst.
+    apply IHeval_exp2 in H7. subst. apply IHeval_exp3 in H9. apply H9.
+Qed.
 
 Inductive eval_decl : envt -> program -> (string * envt * exval) -> Prop :=
 | ExpE : forall e env v,
@@ -196,7 +264,6 @@ Inductive eval_decl : envt -> program -> (string * envt * exval) -> Prop :=
     e[[env]] --> v -> eval_decl env (Decl x e) (x, Environment.extend x v env, v).
 
 (*
-
 Definition isval e :=
   match e with
   | ilit _ => true
@@ -211,6 +278,8 @@ Definition compute_op op arg1 arg2 :=
   | (Plus, _, _) => Err "Both arguments must be integer: +"
   | (Mult, ilit i1, ilit i2) => Som (ilit (i1 * i2))
   | (Mult, _ , _) => Err "Both arguments must be integer: *"
+  | (Minus, ilit i1, ilit i2) => Som (ilit (i1 - i2))
+  | (Minus, _ , _) => Err "Both arguments must be integer: -"
   | (Lt, ilit i1, ilit i2) => Som (blit (Nat.ltb i1 i2))
   | (Lt, _, _) => Err ("Both arguments must be integer: <")
   end.
@@ -302,3 +371,53 @@ Inductive multi_eval_fix : exp -> list (id * exp) -> opt -> Prop :=
 *)
 
 End eval.
+
+Module Typying.
+
+Import Syntax.
+Import Environment.
+Import eval.
+
+Reserved Notation "G |- e ;; T" (at level 50).
+Inductive has_type : list (id * ty) -> exp -> ty -> Prop :=
+| T_Var : forall x G T, lookup x G = Some T -> G |- var x;; T
+| T_int : forall n G, G |- ilit n ;; TyNat
+| T_Bool : forall b G, G |- blit b ;; TyBool
+| T_Plus : forall e1 e2 G,
+    G |- e1 ;; TyNat -> G |- e2 ;; TyNat ->
+    G |- BinOp Plus e1 e2 ;; TyNat
+| T_Mult : forall e1 e2 G,
+    G |- e1 ;; TyNat -> G |- e2 ;; TyNat ->
+    G |- BinOp Mult e1 e2 ;; TyNat
+| T_Minus : forall e1 e2 G,
+    G |- e1 ;; TyNat -> G |- e2 ;; TyNat ->
+    G |- BinOp Minus e1 e2 ;; TyNat
+| T_Lt : forall e1 e2 G,
+    G |- e1 ;; TyNat -> G |- e2 ;; TyNat ->
+    G |- BinOp Lt e1 e2 ;; TyBool
+| T_Band : forall e1 e2 G,
+    G |- e1 ;; TyBool -> G |- e2 ;; TyBool ->
+    G |- BinOp Band e1 e2 ;; TyBool
+| T_Bor : forall e1 e2 G,
+    G |- e1 ;; TyBool -> G |- e2 ;; TyBool ->
+    G |- BinOp Bor e1 e2 ;; TyBool
+| T_If : forall e1 e2 e3 T G,
+    G |- e1 ;; TyBool -> G |- e2 ;; T -> G |- e3 ;; T ->
+    G |- IfExp e1 e2 e3 ;; T
+| T_Let : forall e1 x T1 e2 T2 G,
+    G |- e1;; T1 -> ((x, T1):: G) |- e2;; T2 ->
+    G |- LET x e1 e2 ;; T2
+| T_Fun : forall x T1 e T G,
+    ((x, T1):: G) |- e;; T ->
+    G |- FunExp x e;; TyFun T1 T
+| T_App : forall e1 e2 T1 T G,
+    G |- e1;; TyFun T1 T -> G |- e2;; T1 ->
+    G |- AppExp e1 e2 ;; T
+| T_Rec : forall f T1 T2 x e1 e2 T G,
+    ((f, TyFun T1 T2):: (x, T1):: G) |- e1;; T2 ->
+    ((f, TyFun T1 T2):: G) |- e2;; T ->
+    G |- RecExp f x e1 e2;; T
+
+where "G |- e ;; T" := (has_type G e T).
+
+End Typying.
