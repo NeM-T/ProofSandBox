@@ -196,12 +196,29 @@ data _—↠′_ : Term → Term → Set where
       -------
     → L —↠′ N
 
+-- data _—↠_ : Term → Term → Set where
+--   _∎ : ∀ M
+--       ---------
+--     → M —↠ M
+
+--   _—→⟨_⟩_ : ∀ L {M N}
+--     → L —→ M
+--     → M —↠ N
+--       ---------
+--     → L —↠ N
+
+-- begin_ : ∀ {M N}
+--   → M —↠ N
+--     ------
+--   → M —↠ N
+-- begin M—↠N = M—↠N
+
 -- —↠≲—↠′ : ∀ (M N : Term) → M —↠ N ≲ M —↠′ N
 -- —↠≲—↠′ = λ M N →
 --        record { to = λ { (.M ∎) → refl′ ; 
 --                          (.M —→⟨ x ⟩ y) →
 --                            trans′ (step′ x) {!!}};
---                 from = λ { (step′ x) → {!!};
+--                 from = λ { (step′ x) → {!!} ;
 --                            refl′ → {!!} ;
 --                            (trans′ x x₁) → {!!}} ;
 --                 from∘to = {!!} }
@@ -252,3 +269,103 @@ deterministic (β-suc x) (ξ-case {X} {_} {_} {M} {N} (ξ-suc {L} {O} h2)) =
 deterministic (β-suc x) (β-suc x₁) = refl
 
 deterministic β-μ β-μ = refl
+
+infixr 7 _⇒_
+
+data Type : Set where
+  _⇒_ : Type → Type → Type
+  `ℕ : Type
+
+infixl 5  _,_⦂_
+
+data Context : Set where
+  ∅     : Context
+  _,_⦂_ : Context → Id → Type → Context
+
+
+infix  4  _∋_⦂_
+
+data _∋_⦂_ : Context → Id → Type → Set where
+
+  Z : ∀ {Γ x A}
+      ------------------
+    → Γ , x ⦂ A ∋ x ⦂ A
+
+  S : ∀ {Γ x y A B}
+    → x ≢ y
+    → Γ ∋ x ⦂ A
+      ------------------
+    → Γ , y ⦂ B ∋ x ⦂ A
+
+
+_ : ∅ , "x" ⦂ `ℕ ⇒ `ℕ , "y" ⦂ `ℕ , "z" ⦂ `ℕ ∋ "x" ⦂ `ℕ ⇒ `ℕ
+_ = S (λ()) (S (λ()) Z)
+
+infix  4  _⊢_⦂_
+
+data _⊢_⦂_ : Context → Term → Type → Set where
+
+  -- Axiom
+  ⊢` : ∀ {Γ x A}
+    → Γ ∋ x ⦂ A
+      -----------
+    → Γ ⊢ ` x ⦂ A
+
+  -- ⇒-I
+  ⊢ƛ : ∀ {Γ x N A B}
+    → Γ , x ⦂ A ⊢ N ⦂ B
+      -------------------
+    → Γ ⊢ ƛ x ⇒ N ⦂ A ⇒ B
+
+  -- ⇒-E
+  _·_ : ∀ {Γ L M A B}
+    → Γ ⊢ L ⦂ A ⇒ B
+    → Γ ⊢ M ⦂ A
+      -------------
+    → Γ ⊢ L · M ⦂ B
+
+  -- ℕ-I₁
+  ⊢zero : ∀ {Γ}
+      --------------
+    → Γ ⊢ `zero ⦂ `ℕ
+
+  -- ℕ-I₂
+  ⊢suc : ∀ {Γ M}
+    → Γ ⊢ M ⦂ `ℕ
+      ---------------
+    → Γ ⊢ `suc M ⦂ `ℕ
+
+  -- ℕ-E
+  ⊢case : ∀ {Γ L M x N A}
+    → Γ ⊢ L ⦂ `ℕ
+    → Γ ⊢ M ⦂ A
+    → Γ , x ⦂ `ℕ ⊢ N ⦂ A
+      -------------------------------------
+    → Γ ⊢ case L [zero⇒ M |suc x ⇒ N ] ⦂ A
+
+  ⊢μ : ∀ {Γ x M A}
+    → Γ , x ⦂ A ⊢ M ⦂ A
+      -----------------
+    → Γ ⊢ μ x ⇒ M ⦂ A
+
+S′ : ∀ {Γ x y A B}
+   → {x≢y : False (x ≟ y)}
+   → Γ ∋ x ⦂ A
+     ------------------
+   → Γ , y ⦂ B ∋ x ⦂ A
+
+S′ {x≢y = x≢y} x = S (toWitnessFalse x≢y) x
+
+⊢plus : ∀ {Γ} → Γ ⊢ plus ⦂ `ℕ ⇒ `ℕ ⇒ `ℕ
+⊢plus = ⊢μ (⊢ƛ (⊢ƛ (⊢case (⊢` (S′ Z)) (⊢` Z) (⊢suc (((⊢` (S′ (S′ (S′ Z)))) · ⊢` Z) · ⊢` (S′ Z) )))))
+
+-- ⊢plus : ∀ {Γ} → Γ ⊢ plus ⦂ `ℕ ⇒ `ℕ ⇒ `ℕ
+-- ⊢plus = ⊢μ (⊢ƛ (⊢ƛ (⊢case (⊢` ∋m) (⊢` ∋n)
+--          (⊢suc (⊢` ∋+ · ⊢` ∋m′ · ⊢` ∋n′)))))
+--   where
+--   ∋+  = S′ (S′ (S′ Z))
+--   ∋m  = S′ Z
+--   ∋n  = Z
+--   ∋m′ = Z
+--   ∋n′ = S′ Z
+

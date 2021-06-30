@@ -1,5 +1,10 @@
 module plfa.part1.Lists where
 
+data EQ (A : Set) (a : A) : A → Set where
+  refl : EQ A a a
+path : ∀ {A : Set} (X : A → Set) → (a b : A)→ EQ A a b → (X a → X b)
+path {A} X a a refl y = {!!}
+
 import Relation.Binary.PropositionalEquality as Eq
 open Eq using (_≡_; refl; sym; trans; cong)
 open Eq.≡-Reasoning
