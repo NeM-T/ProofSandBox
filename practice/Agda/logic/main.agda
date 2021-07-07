@@ -7,7 +7,7 @@ open import Data.Nat using (ℕ; zero; suc; _≟_)
 open import Data.Product
 open import Data.Sum using (_⊎_; inj₁; inj₂) renaming ([_,_] to case-⊎)
 open import Relation.Nullary using (Dec; yes; no; ¬_)
-open import Relation.Nullary.Decidable using (⌊_⌋; False; toWitnessFalse)
+open import Relation.Nullary.Decidable using (⌊_⌋; False; toWitnessFalse; toWitness)
 open import Relation.Nullary.Negation using (¬?)
 open import Relation.Binary.PropositionalEquality using (_≡_; _≢_; refl; cong; subst)
 import Relation.Binary.PropositionalEquality as Eq
@@ -125,6 +125,9 @@ and_prop_true {true} {q} = λ { (fst , snd) → snd}
 
 and_true_elim_r : ∀ {p q} → p ∧ q ≡ true → q ≡ true
 and_true_elim_r {true} {true} h = refl
+
+and_true_elim_l : ∀ {p q} → p ∧ q ≡ true → p ≡ true
+and_true_elim_l {true} {true} h = refl
 
 and_true_r : ∀ p → p ∧ true ≡ p
 and_true_r false = refl
@@ -428,3 +431,163 @@ soundND {Γ} {bot} {v} (ND_not_elim {_} {p} h h1) with inspect (Bid v (andL Γ))
                                     (or_true_l_false (soundND h1) (T_not_F eq)))
 ...     | false with≡ eq rewrite eq = refl
 
+
+data _⟶_ : List prop → List prop → Set where
+  -- 公理
+  CLK⊥ : (bot ∷ []) ⟶ []
+  CLK⊤ : [] ⟶ (top ∷ [])
+  CLKinit : ∀ {p} → (p ∷ []) ⟶ (p ∷ [])
+  -- 構造の推論規則
+  CLKweakeningL : ∀ {Γ Δ p} → Γ ⟶ Δ → ( p ∷ Γ ) ⟶ Δ
+  CLKweakeningR : ∀ {Γ Δ p} → Γ ⟶ Δ → Γ ⟶ (p ∷ Δ)
+  CLKcontractionL : ∀ {Γ Δ p} → (p ∷ p ∷ Γ) ⟶ Δ → (p ∷ Γ) ⟶ Δ
+  CLKcontractionR : ∀ {Γ Δ p} → Γ ⟶ (p ∷ p ∷ Δ) → Γ ⟶ (p ∷ Δ)
+  CLKexchangeL : ∀ {Γ Δ p q Π} → (Γ ++ p ∷ q ∷ Π) ⟶ Δ → (Γ ++ q ∷ p ∷ Π) ⟶ Δ
+  CLKexchangeR : ∀ {Γ Δ p q Π} → Γ ⟶ (Δ ++ p ∷ q ∷ Π) → Γ ⟶ (Δ ++ q ∷ p ∷ Π)
+  CLKcut : ∀ {Γ Δ p Π Σ} → Γ ⟶ (p ∷ Δ)→ (p ∷ Π) ⟶ Σ → (Γ ++ Π) ⟶ (Δ ++ Σ)
+  -- 論理結合子の規則
+  CLK∧LL : ∀ {Γ Δ p q} → (p ∷ Γ) ⟶ Δ → ( (land p q) ∷ Γ) ⟶ Δ
+  CLK∧LR : ∀ {Γ Δ p q} → (p ∷ Γ) ⟶ Δ → ( (land q p) ∷ Γ) ⟶ Δ
+  CLK∧R  : ∀ {Γ Δ p q} → Γ ⟶ (p ∷ Δ) → Γ ⟶ (q ∷ Δ) → Γ ⟶ ((land p q) ∷ Δ)
+  CLK∨L  : ∀ {Γ Δ p q} → (p ∷ Γ) ⟶ Δ → (q ∷ Γ) ⟶ Δ → ((lor p q) ∷ Γ) ⟶ Δ
+  CLK∨RL : ∀ {Γ Δ p q} → Γ ⟶ (p ∷ Δ) → Γ ⟶ ((lor p q) ∷ Δ)
+  CLK∨RR : ∀ {Γ Δ p q} → Γ ⟶ (p ∷ Δ) → Γ ⟶ ((lor q p) ∷ Δ)
+  CLK→L : ∀ {Γ Δ p q Π Σ} → Γ ⟶ (p ∷ Δ) → (q ∷ Π) ⟶ Σ → ((to p q) ∷ Γ ++ Π) ⟶ (Δ ++ Σ)
+  CLK→R : ∀ {Γ Δ p q} → (p ∷ Γ) ⟶ (q ∷ Δ) → Γ ⟶ ((to p q) ∷ Δ)
+  CLK¬L : ∀ {Γ Δ p} → Γ ⟶ (p ∷ Δ) → ((lnot p) ∷ Γ) ⟶ Δ
+  CLK¬R : ∀ {Γ Δ p} → (p ∷ Γ) ⟶ Δ → Γ ⟶ ((lnot p) ∷ Δ)
+
+
+_==_ : ℕ → ℕ → Bool
+zero  == zero  = true
+zero  == suc _ = false
+suc _ == zero  = false
+suc x == suc y = x == y
+
+_=?_ : prop → prop → Bool
+bot =? bot = true
+bot =? _   = false
+top =? top = true
+top =? _   = false
+atom x =? atom y = x == y
+atom x =? _      = false
+lnot p1 =? lnot p2 = p1 =? p2
+lnot p1 =? _       = false
+land p1 p3 =? land p2 p4 = p1 =? p2 ∧ p3 =? p4
+land p1 p3 =? _ = false
+lor p1 p3 =? lor p2 p4 = p1 =? p2 ∧ p3 =? p4
+lor p1 p3 =? _ = false
+to p1 p3 =? to p2 p4 = p1 =? p2 ∧ p3 =? p4
+to p1 p3 =? _ = false
+
+==-refl : ∀ x →  x == x ≡ true
+==-refl zero = refl
+==-refl (suc x) = ==-refl x
+
+=?-refl : ∀ p → p =? p ≡ true
+=?-refl bot = refl
+=?-refl top = refl
+=?-refl (atom x) = ==-refl x
+=?-refl (lnot p) = =?-refl p
+=?-refl (land p p₁) rewrite (=?-refl p) | (=?-refl p₁) = refl
+=?-refl (lor p p₁)  rewrite (=?-refl p) | (=?-refl p₁) = refl
+=?-refl (to p p₁)   rewrite (=?-refl p) | (=?-refl p₁) = refl
+
+==-eq : ∀ x y → x == y ≡ true → x ≡ y
+==-eq zero zero h = refl
+==-eq (suc x) (suc y) h rewrite (==-eq x y h) = refl
+
+=?-eq : ∀ p q → p =? q ≡ true → p ≡ q
+=?-eq bot bot h = refl
+=?-eq top top h = refl
+=?-eq (atom x) (atom x₁) h rewrite (==-eq x x₁ h) = refl
+=?-eq (lnot p) (lnot q) h rewrite (=?-eq p q h) = refl
+=?-eq (land p p₁) (land q q₁) h rewrite (=?-eq p q (and_true_elim_l h)) | (=?-eq p₁ q₁ (and_true_elim_r h)) = refl
+=?-eq (lor p p₁) (lor q q₁) h rewrite (=?-eq p q (and_true_elim_l h)) | (=?-eq p₁ q₁ (and_true_elim_r h)) = refl
+=?-eq (to p p₁) (to q q₁) h rewrite (=?-eq p q (and_true_elim_l h)) | (=?-eq p₁ q₁ (and_true_elim_r h)) = refl
+
+
+≡-Set : ∀ {A : Set} {x y : A} {P : A → Set} → x ≡ y → P x → P y
+≡-Set h h₁ rewrite h = h₁
+
+
+app_cons_assoc : ∀ {A : Set} {x : A} {l₁ l₂} → l₁ ++ x ∷ l₂ ≡ (l₁ ++ x ∷ []) ++ l₂
+app_cons_assoc {_} {x} {[]} {L} = refl
+app_cons_assoc {_} {x} {x₁ ∷ l} {L} rewrite app_cons_assoc {_} {x} {l} {L} = refl
+
+CLK_app : ∀ {Π Σ Δ} →
+  Σ ⟶ Δ → (Π ++ Σ) ⟶ Δ
+CLK_app {[]} {b} {c} h = h
+CLK_app {x ∷ a} {b} {c} h = CLKweakeningL (CLK_app h)
+
+CLK-tail : ∀ {Γ p Δ Π} → (Γ ++ p ∷ Π) ⟶ Δ → (Γ ++ Π ++ p ∷ []) ⟶ Δ
+CLK-tail {Γ} {p} {Δ} {[]} h = h
+CLK-tail {Γ} {p} {Δ} {x ∷ Π} h rewrite app_cons_assoc {_} {x} {Γ} {Π ++ p ∷ []}
+  = (CLK-tail {Γ ++ x ∷ []} {p} {Δ} {Π}
+              (subst (λ x → x ⟶ Δ)
+              (app_cons_assoc)
+              (CLKexchangeL h)))
+
+tail-CLK : ∀ {Γ p Δ Π} →  (Γ ++ Π ++ p ∷ []) ⟶ Δ → (Γ ++ p ∷ Π) ⟶ Δ
+tail-CLK {Γ} {p} {Δ} {[]} h = h
+tail-CLK {Γ} {p} {Δ} {x ∷ Π} h
+  = CLKexchangeL (subst (λ x → x ⟶ Δ)
+                 (sym (app_cons_assoc {_} {x} {Γ} {p ∷ Π}))
+                 (tail-CLK (subst (λ x → x ⟶ Δ)
+                           (app_cons_assoc {_} {x} {Γ} {Π ++ p ∷ []})
+                           h)))
+
+CLK-in-proof : ∀ {Γ p} → p ∈ Γ → Γ ⟶ (p ∷ [])
+CLK-in-proof {(p ∷ Γ)} {p} ineq = (tail-CLK {[]} (CLK_app CLKinit))
+CLK-in-proof {(x ∷ Γ)} {p} (incons h) = (CLKweakeningL (CLK-in-proof h))
+
+app_nil_r : ∀ {A : Set} {Γ : List A} → (Γ ++ []) ≡ Γ
+app_nil_r {_} {[]} = refl
+app_nil_r {_} {x ∷ Γ} rewrite (app_nil_r {_} {Γ}) = refl
+
+same-L-CLK : ∀ {Γ Δ} → (Γ) ⟶ Δ ≡ (Γ ++ Γ) ⟶ Δ  
+same-L-CLK {[]} {Δ} = refl
+same-L-CLK {x ∷ Γ} {Δ} = {!!}
+
+ND_to_LK : ∀ Γ p → Γ ⊢ p → Γ ⟶ (p ∷ [])
+ND Γ to p LK ND x asumption = (CLK-in-proof x)
+ND Γ to .top LK ND_top rewrite sym (app_nil_r {_} {Γ}) = (CLK_app {Γ} {[]} {top ∷ []} CLK⊤)
+ND Γ to p LK ND h contra rewrite sym (app_nil_r {_} {Γ}) | sym (app_nil_r {_} {p ∷ []})
+  = (CLKcut {Γ} {[]} {bot} {[]} {p ∷ []}
+            (subst (λ z → z ⟶ (bot ∷ [])) (app_nil_r) (ND_to_LK _ _ h))
+            (CLKweakeningR CLK⊥ ))
+ND Γ to (land p q) LK ND h and h₁ intro = (CLK∧R (ND_to_LK _ _ h) (ND_to_LK _ _ h₁) )
+ND Γ to p LK (ND_and_elimL {_} {_} {q} h) rewrite sym (app_nil_r {_} {Γ})
+  = (CLKcut {Γ} {[]} {land p q} {[]} {p ∷ []}
+           (subst (λ z → z ⟶ (land p q ∷ [])) (app_nil_r) (ND_to_LK _ _ h))
+           (CLK∧LL CLKinit))
+ND Γ to p LK (ND_and_elimR {_} {q} {_} h) rewrite sym (app_nil_r {_} {Γ})
+  = (CLKcut {Γ} {[]} {land q p} {[]} {p ∷ []}
+           (subst (λ z → z ⟶ (land q p ∷ [])) (app_nil_r) (ND_to_LK _ _ h))
+           (CLK∧LR CLKinit))
+ND Γ to (lor p q) LK (ND_or_introL h) = (CLK∨RL (ND_to_LK _ _ h))
+ND Γ to (lor p q) LK (ND_or_introR h) = (CLK∨RR (ND_to_LK _ _ h))
+ND Γ to p LK (ND_or_elim {Γ} {q} {r} h h₁ h₂)
+  rewrite sym (app_nil_r {_} {Γ}) | (same-L-CLK {Γ ++ []} {p ∷ []} )
+  = (CLKcut {Γ ++ []} {[]} {lor q r} {Γ ++ []} {p ∷ []}
+           (ND_to_LK _ _ h)
+           (CLK∨L (ND_to_LK _ _ h₁) (ND_to_LK _ _ h₂)))
+ND Γ to (to p q) LK (ND_to_intro h) = (CLK→R (ND_to_LK _ _ h))
+ND Γ to p LK (ND_to_elim {_} {q} {p} h h₁)
+  rewrite sym (app_nil_r {_} {Γ}) | (same-L-CLK {Γ ++ []} {p ∷ []} )
+  = (CLKcut {Γ ++ []} {[]} {to q p} {Γ ++ []} {p ∷ []}
+            (ND_to_LK _ _ h₁)
+            (CLK→L {Γ} {[]} {q} {p} {[]} {p ∷ []}
+            (subst (λ z → z ⟶ (q ∷ [])) (app_nil_r) (ND_to_LK _ _ h))
+            CLKinit))
+ND Γ to (lnot p) LK (ND_not_intro h) rewrite sym (app_nil_r {_} {Γ})
+  = (CLK¬R (CLKcut {p ∷ Γ} {[]} {bot} {[]} {[]}
+           (subst (λ z → z ⟶ (bot ∷ [])) (app_nil_r) (ND_to_LK _ _ h))
+           CLK⊥))
+ND Γ to bot LK (ND_not_elim {_} {p} h h₁)
+  rewrite sym (app_nil_r {_} {Γ}) | (same-L-CLK {Γ ++ []} {bot ∷ []})
+  = (CLKcut {Γ ++ []} {[]} {lnot p} {Γ ++ []} {bot ∷ []}
+    (ND_to_LK _ _ h₁)
+    (CLK¬L
+      (CLKexchangeR {Γ ++ []} {[]} {bot} {p} {[]}
+        (CLKweakeningR (ND_to_LK _ _ h)))))
