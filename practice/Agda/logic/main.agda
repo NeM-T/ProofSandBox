@@ -510,13 +510,15 @@ to p1 p3 =? _ = false
 ≡-Set : ∀ {A : Set} {x y : A} {P : A → Set} → x ≡ y → P x → P y
 ≡-Set h h₁ rewrite h = h₁
 
+app_assoc : ∀ {A : Set} {x y z : List A} → x ++ y ++ z ≡ (x ++ y) ++ z
+app_assoc {_} {[]} {y} {z} = refl
+app_assoc {_} {x ∷ x₁} {y} {z} rewrite app_assoc {_} {x₁} {y} {z} = refl
 
 app_cons_assoc : ∀ {A : Set} {x : A} {l₁ l₂} → l₁ ++ x ∷ l₂ ≡ (l₁ ++ x ∷ []) ++ l₂
 app_cons_assoc {_} {x} {[]} {L} = refl
 app_cons_assoc {_} {x} {x₁ ∷ l} {L} rewrite app_cons_assoc {_} {x} {l} {L} = refl
 
-CLK_app : ∀ {Π Σ Δ} →
-  Σ ⟶ Δ → (Π ++ Σ) ⟶ Δ
+CLK_app : ∀ {Π Σ Δ} → Σ ⟶ Δ → (Π ++ Σ) ⟶ Δ
 CLK_app {[]} {b} {c} h = h
 CLK_app {x ∷ a} {b} {c} h = CLKweakeningL (CLK_app h)
 
@@ -528,6 +530,7 @@ CLK-tail {Γ} {p} {Δ} {x ∷ Π} h rewrite app_cons_assoc {_} {x} {Γ} {Π ++ p
               (app_cons_assoc)
               (CLKexchangeL h)))
 
+
 tail-CLK : ∀ {Γ p Δ Π} →  (Γ ++ Π ++ p ∷ []) ⟶ Δ → (Γ ++ p ∷ Π) ⟶ Δ
 tail-CLK {Γ} {p} {Δ} {[]} h = h
 tail-CLK {Γ} {p} {Δ} {x ∷ Π} h
@@ -537,6 +540,21 @@ tail-CLK {Γ} {p} {Δ} {x ∷ Π} h
                            (app_cons_assoc {_} {x} {Γ} {Π ++ p ∷ []})
                            h)))
 
+CLK-head : ∀ {Γ p Π Δ} → (Γ ++ p ∷ Π) ⟶ Δ → (p ∷ Γ ++ Π) ⟶ Δ 
+CLK-head {[]}    {p} {Π} {Δ} h = h
+CLK-head {x ∷ Γ} {p} {Π} {Δ} h
+  = (tail-CLK {[]} (≡-Set {_} {x ∷ Γ ++ Π ++ p ∷ []} {x ∷ (Γ ++ Π) ++ p ∷ []} {λ y → y ⟶ Δ}
+                   (begin
+                     x ∷ Γ ++ Π ++ p ∷ []
+                    ≡⟨ app_cons_assoc {_} {_} {[]} ⟩
+                     (x ∷ []) ++ Γ ++ Π ++ p ∷ []
+                    ≡⟨ cong (λ y → (x ∷ []) ++ y) (app_assoc {_} {Γ} {Π} {p ∷ []}) ⟩
+                     (x ∷ []) ++ (Γ ++ Π) ++ p ∷ []
+                    ≡⟨ sym (app_cons_assoc {_} {_} {[]}) ⟩
+                     x ∷ (Γ ++ Π) ++ p ∷ []
+                    ∎)
+                   (CLK-tail {x ∷ Γ} h)))
+
 CLK-in-proof : ∀ {Γ p} → p ∈ Γ → Γ ⟶ (p ∷ [])
 CLK-in-proof {(p ∷ Γ)} {p} ineq = (tail-CLK {[]} (CLK_app CLKinit))
 CLK-in-proof {(x ∷ Γ)} {p} (incons h) = (CLKweakeningL (CLK-in-proof h))
@@ -545,9 +563,35 @@ app_nil_r : ∀ {A : Set} {Γ : List A} → (Γ ++ []) ≡ Γ
 app_nil_r {_} {[]} = refl
 app_nil_r {_} {x ∷ Γ} rewrite (app_nil_r {_} {Γ}) = refl
 
-same-L-CLK : ∀ {Γ Δ} → (Γ) ⟶ Δ ≡ (Γ ++ Γ) ⟶ Δ  
-same-L-CLK {[]} {Δ} = refl
-same-L-CLK {x ∷ Γ} {Δ} = {!!}
+same-L : ∀ {Γ} {Δ} {Π} → (Γ ++ Γ ++ Π) ⟶ Δ → (Γ ++ Π) ⟶ Δ 
+same-L {[]} {Δ} {Π} h = h
+same-L {x ∷ Γ} {Δ} {Π} h 
+  = (tail-CLK {[]}
+    (≡-Set {_} {Γ ++ Π ++ x ∷ []} {(Γ ++ Π) ++ x ∷ []} {λ x → x ⟶ Δ}
+    (app_assoc {_} {Γ} {Π} {x ∷ []})
+    (same-L {Γ}
+      (subst (λ x → x ⟶ Δ)
+             (begin
+               (Γ ++ Γ ++ Π) ++ x ∷ []
+             ≡⟨ sym (app_assoc {_} {Γ} {Γ ++ Π} {x ∷ []} ) ⟩
+               Γ ++ (Γ ++ Π) ++ x ∷ []
+             ≡⟨ cong (λ y → Γ ++ y) (sym (app_assoc {_} {Γ} {Π} {x ∷ []})) ⟩
+               Γ ++ Γ ++ Π ++ x ∷ []
+             ∎)
+             (CLK-tail {[]} {x} {Δ} {Γ ++ Γ ++ Π}
+                       (CLKcontractionL (CLK-head {x ∷ Γ} {x} h)))))))
+
+same-L-CLK : ∀ {Γ Δ} → (Γ ++ Γ) ⟶ Δ  → Γ ⟶ Δ
+same-L-CLK {Γ} {Δ} h rewrite sym (app_nil_r {_} {Γ})
+  = (same-L {Γ} {Δ} {[]}
+            (subst (λ x → x ⟶ Δ)
+              (begin
+                (Γ ++ []) ++ Γ ++ []
+               ≡⟨ cong (λ x → (x ++ Γ ++ [])) {Γ ++ []} {Γ} app_nil_r ⟩
+                 Γ ++ Γ ++ []
+               ∎)
+              h))
+
 
 ND_to_LK : ∀ Γ p → Γ ⊢ p → Γ ⟶ (p ∷ [])
 ND Γ to p LK ND x asumption = (CLK-in-proof x)
@@ -568,14 +612,14 @@ ND Γ to p LK (ND_and_elimR {_} {q} {_} h) rewrite sym (app_nil_r {_} {Γ})
 ND Γ to (lor p q) LK (ND_or_introL h) = (CLK∨RL (ND_to_LK _ _ h))
 ND Γ to (lor p q) LK (ND_or_introR h) = (CLK∨RR (ND_to_LK _ _ h))
 ND Γ to p LK (ND_or_elim {Γ} {q} {r} h h₁ h₂)
-  rewrite sym (app_nil_r {_} {Γ}) | (same-L-CLK {Γ ++ []} {p ∷ []} )
-  = (CLKcut {Γ ++ []} {[]} {lor q r} {Γ ++ []} {p ∷ []}
+  rewrite sym (app_nil_r {_} {Γ}) 
+  = same-L-CLK (CLKcut {Γ ++ []} {[]} {lor q r} {Γ ++ []} {p ∷ []}
            (ND_to_LK _ _ h)
            (CLK∨L (ND_to_LK _ _ h₁) (ND_to_LK _ _ h₂)))
 ND Γ to (to p q) LK (ND_to_intro h) = (CLK→R (ND_to_LK _ _ h))
 ND Γ to p LK (ND_to_elim {_} {q} {p} h h₁)
-  rewrite sym (app_nil_r {_} {Γ}) | (same-L-CLK {Γ ++ []} {p ∷ []} )
-  = (CLKcut {Γ ++ []} {[]} {to q p} {Γ ++ []} {p ∷ []}
+  rewrite sym (app_nil_r {_} {Γ})
+  = same-L-CLK (CLKcut {Γ ++ []} {[]} {to q p} {Γ ++ []} {p ∷ []}
             (ND_to_LK _ _ h₁)
             (CLK→L {Γ} {[]} {q} {p} {[]} {p ∷ []}
             (subst (λ z → z ⟶ (q ∷ [])) (app_nil_r) (ND_to_LK _ _ h))
@@ -585,8 +629,9 @@ ND Γ to (lnot p) LK (ND_not_intro h) rewrite sym (app_nil_r {_} {Γ})
            (subst (λ z → z ⟶ (bot ∷ [])) (app_nil_r) (ND_to_LK _ _ h))
            CLK⊥))
 ND Γ to bot LK (ND_not_elim {_} {p} h h₁)
-  rewrite sym (app_nil_r {_} {Γ}) | (same-L-CLK {Γ ++ []} {bot ∷ []})
-  = (CLKcut {Γ ++ []} {[]} {lnot p} {Γ ++ []} {bot ∷ []}
+  rewrite sym (app_nil_r {_} {Γ})
+  = (same-L-CLK {Γ ++ []} {bot ∷ []})
+    (CLKcut {Γ ++ []} {[]} {lnot p} {Γ ++ []} {bot ∷ []}
     (ND_to_LK _ _ h₁)
     (CLK¬L
       (CLKexchangeR {Γ ++ []} {[]} {bot} {p} {[]}
