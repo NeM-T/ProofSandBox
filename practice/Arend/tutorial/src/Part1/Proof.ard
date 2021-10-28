@@ -1,0 +1,9 @@
+\import Part1.Basic
+
+\func absurd {A : \Type} (e : Empty) : A
+
+\func absurd' {A : \Type} (e : Empty) : A \elim e
+  | ()
+
+\func Unit-isTrue : Unit => unit
+

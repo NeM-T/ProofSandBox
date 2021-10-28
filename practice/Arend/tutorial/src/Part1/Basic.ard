@@ -1,0 +1,54 @@
+\func f => 0
+
+\func id (x : Nat) => x
+
+\func foo => \lam (x _ : Nat) (_ : Int) => x
+
+\func \infixl 6 $$ (x y : Nat) => x
+
+\func test => 3 $$ 7
+
+\data Empty
+
+\data Unit | unit
+
+\data Bool | false | true
+
+\func not (x : Bool) : Bool \with
+  | true  => false
+  | false => true
+
+\func if (x : Bool) (t e : nat) : nat \elim x
+  | true  => t
+  | false => e
+
+\data nat | z | s nat
+
+\func three => s (s (s z))
+
+\func three' => 3
+
+\func \infixl 6 + (x y : nat) : nat \elim y
+  | z => x
+  | s y => s (x + y)
+
+\func \infixl 7 * (x y : nat) : nat \elim y
+  | z => z
+  | s y => x * y + x
+
+\func \infixr 8 ^ (x y : nat) : nat \elim y
+  | z => x
+  | s n => x * (x ^ n)
+
+\func polymorphism_id (A : \Type) (a : A) => a
+
+\func idType : \Pi (A : \Type) (a : A) -> A => polymorphism_id
+
+\data list (A : \Type) | nl | con A (list A)
+
+\func emptylist => nl {nat}
+
+\func \infixl 6 ++ {A : \Type} (xs ys : list A) : list A \elim xs
+  | nl => ys
+  | con x xs => con x (xs ++ ys)
+
