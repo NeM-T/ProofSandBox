@@ -7,3 +7,44 @@
 
 \func Unit-isTrue : Unit => unit
 
+\func \infixr 3 && (P Q : \Type) => \Sigma P Q
+
+\func &&-intro {P Q : \Type} (p : P) (q : Q) : \Sigma P Q => (p, q)
+
+\func &&-elim1 {P Q : \Type} (t : \Sigma P Q) : P => t.1
+
+\func &&-elim2 {P Q : \Type} (t : \Sigma P Q) : Q => t.2
+
+\data \infixr 2 || (P Q : \Type)
+  | inl P
+  | inr Q
+
+-- This function proves that P -> (P || Q)
+\func ||-intro1 {P Q : \Type} (p : P) : P || Q => inl p
+
+-- This function proves that Q -> (P || Q)
+\func ||-intro2 {P Q : \Type} (q : Q) : P || Q => inr q
+
+-- This function proves that (P -> R) -> (Q -> R) -> (P || Q) -> R
+\func ||-elim {P Q R : \Type} (l : P -> R) (r : Q -> R) (x : P || Q) : R \elim x
+  | inl p => l p
+  | inr q => r q
+
+\func T (b : Bool) : \Type
+  | true => Unit
+  | false => Empty
+
+\func not (b : Bool) : Bool \elim b
+  | true  => false
+  | false => true
+
+\func \infix 4 == (x y : Bool) : Bool
+  | true, true => true
+  | false, false => true
+  | _ , _ => false
+
+-- we can prove negation of not-isIdempotent
+\func not-isIdempotent (x : Bool) : T (not (not x) == not x) -> Empty
+  | true => \lam x => x -- a proof of Empty -> Empty
+  | false => \lam x => x -- again a proof of Empty -> Empty
+

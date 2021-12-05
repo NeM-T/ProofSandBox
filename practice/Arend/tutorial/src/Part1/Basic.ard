@@ -12,13 +12,13 @@
 
 \data Unit | unit
 
-\data Bool | false | true
+\data bool | false | true
 
-\func not (x : Bool) : Bool \with
+\func not (x : bool) : bool \with
   | true  => false
   | false => true
 
-\func if (x : Bool) (t e : nat) : nat \elim x
+\func if (x : bool) (t e : nat) : nat \elim x
   | true  => t
   | false => e
 
